@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 850" font-family="Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="720" height="850" fill="#f6f5f0" rx="14"/>
+
+  <!-- Authenticate card -->
+  <rect x="20" y="20" width="680" height="150" fill="#ffffff" stroke="#d9d7cf" rx="12"/>
+  <text x="44" y="52" font-size="16" font-weight="bold" fill="#1a1a18">Authenticate</text>
+  <text x="44" y="74" font-size="12" fill="#8a887f">Runs on demand to validate credentials against the VRM API.</text>
+  <text x="44" y="100" font-size="12" font-weight="bold" fill="#3d3d3a">VRM access token</text>
+  <rect x="44" y="108" width="632" height="32" fill="#fbfaf7" stroke="#c9c7bf" rx="8"/>
+  <text x="56" y="129" font-size="13" fill="#5f5e5a" font-family="monospace">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</text>
+  <text x="44" y="158" font-size="11" fill="#8a887f">Generate in the VRM portal under Preferences &#8594; Integrations &#8594; Access tokens. Username/password login is not supported.</text>
+
+  <!-- Pull observations card -->
+  <rect x="20" y="190" width="680" height="640" fill="#ffffff" stroke="#d9d7cf" rx="12"/>
+  <text x="44" y="224" font-size="16" font-weight="bold" fill="#1a1a18">Pull observations</text>
+  <rect x="560" y="206" width="116" height="24" fill="#f1efe8" rx="8"/>
+  <text x="618" y="222" font-size="11" fill="#5f5e5a" text-anchor="middle">every 15 min</text>
+  <text x="44" y="246" font-size="12" fill="#8a887f">Fetches latest sensor readings and alarm events for each installation.</text>
+
+  <!-- Installations -->
+  <text x="44" y="276" font-size="12" font-weight="bold" fill="#3d3d3a">Installations</text>
+  <rect x="44" y="286" width="632" height="88" fill="none" stroke="#d9d7cf" rx="8"/>
+  <text x="60" y="308" font-size="11" fill="#8a887f">Installation ID</text>
+  <rect x="60" y="314" width="180" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
+  <text x="70" y="333" font-size="12" fill="#3d3d3a">505735</text>
+  <text x="262" y="308" font-size="11" fill="#8a887f">Latitude</text>
+  <rect x="262" y="314" width="150" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
+  <text x="272" y="333" font-size="12" fill="#3d3d3a">-13.104724</text>
+  <text x="434" y="308" font-size="11" fill="#8a887f">Longitude</text>
+  <rect x="434" y="314" width="150" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
+  <text x="444" y="333" font-size="12" fill="#3d3d3a">31.784705</text>
+  <text x="60" y="364" font-size="11" fill="#8a887f">Subject name override (optional &#8212; defaults to VRM site name)</text>
+
+  <rect x="44" y="384" width="632" height="60" fill="none" stroke="#d9d7cf" rx="8"/>
+  <text x="60" y="406" font-size="11" fill="#8a887f">Installation ID</text>
+  <rect x="60" y="412" width="180" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
+  <text x="70" y="431" font-size="12" fill="#3d3d3a">332245</text>
+  <text x="262" y="406" font-size="11" fill="#8a887f">Latitude</text>
+  <rect x="262" y="412" width="150" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
+  <text x="272" y="431" font-size="12" fill="#3d3d3a">0.028408</text>
+  <text x="434" y="406" font-size="11" fill="#8a887f">Longitude</text>
+  <rect x="434" y="412" width="150" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
+  <text x="444" y="431" font-size="12" fill="#3d3d3a">36.888190</text>
+
+  <rect x="44" y="456" width="140" height="30" fill="#ffffff" stroke="#b4b2a9" rx="8"/>
+  <text x="114" y="476" font-size="12" fill="#3d3d3a" text-anchor="middle">+ Add installation</text>
+
+  <!-- Sensors of interest -->
+  <line x1="44" y1="504" x2="676" y2="504" stroke="#e5e3db"/>
+  <text x="44" y="530" font-size="12" font-weight="bold" fill="#3d3d3a">Sensors of interest</text>
+  <text x="44" y="548" font-size="11" fill="#8a887f">VRM attribute codes shown as subject details in EarthRanger. Case-sensitive. Names and units come from VRM automatically.</text>
+
+  <!-- chips row 1 -->
+  <g font-size="11">
+    <rect x="44" y="560" width="96" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="54" y="577" fill="#0c447c" font-family="monospace">V</text><text x="66" y="577" fill="#185fa5">Voltage &#215;</text>
+    <rect x="148" y="560" width="164" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="158" y="577" fill="#0c447c" font-family="monospace">BT</text><text x="180" y="577" fill="#185fa5">Battery temperature &#215;</text>
+    <rect x="320" y="560" width="140" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="330" y="577" fill="#0c447c" font-family="monospace">CE</text><text x="352" y="577" fill="#185fa5">Consumed Ah &#215;</text>
+    <rect x="468" y="560" width="96" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="478" y="577" fill="#0c447c" font-family="monospace">I</text><text x="490" y="577" fill="#185fa5">Current &#215;</text>
+    <rect x="572" y="560" width="104" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="582" y="577" fill="#0c447c" font-family="monospace">SOC</text><text x="614" y="577" fill="#185fa5">SOC &#215;</text>
+  </g>
+  <!-- chips row 2 -->
+  <g font-size="11">
+    <rect x="44" y="594" width="156" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="54" y="611" fill="#0c447c" font-family="monospace">McV</text><text x="86" y="611" fill="#185fa5">Max cell volt &#215;</text>
+    <rect x="208" y="594" width="152" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="218" y="611" fill="#0c447c" font-family="monospace">mcV</text><text x="250" y="611" fill="#185fa5">Min cell volt &#215;</text>
+    <rect x="368" y="594" width="120" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="378" y="611" fill="#0c447c" font-family="monospace">TTG</text><text x="410" y="611" fill="#185fa5">Time to go &#215;</text>
+    <rect x="496" y="594" width="112" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="506" y="611" fill="#0c447c" font-family="monospace">PVP</text><text x="538" y="611" fill="#185fa5">PV power &#215;</text>
+  </g>
+  <!-- chips row 3 -->
+  <g font-size="11">
+    <rect x="44" y="628" width="128" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="54" y="645" fill="#0c447c" font-family="monospace">YT</text><text x="76" y="645" fill="#185fa5">Yield today &#215;</text>
+    <rect x="180" y="628" width="140" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="190" y="645" fill="#0c447c" font-family="monospace">ScS</text><text x="222" y="645" fill="#185fa5">Charge state &#215;</text>
+    <rect x="328" y="628" width="144" height="26" fill="#e6f1fb" rx="8"/>
+    <text x="338" y="645" fill="#0c447c" font-family="monospace">ScERR</text><text x="386" y="645" fill="#185fa5">Charger error &#215;</text>
+    <text x="486" y="645" font-size="11" fill="#8a887f">+ 5 system-overview fallbacks&#8230;</text>
+  </g>
+
+  <rect x="44" y="668" width="480" height="30" fill="#fbfaf7" stroke="#c9c7bf" rx="8"/>
+  <text x="56" y="688" font-size="12" fill="#b4b2a9">Add attribute code, e.g. gs (genset state)</text>
+  <rect x="536" y="668" width="72" height="30" fill="#ffffff" stroke="#b4b2a9" rx="8"/>
+  <text x="572" y="688" font-size="12" fill="#3d3d3a" text-anchor="middle">+ Add</text>
+  <text x="44" y="718" font-size="11" fill="#8a887f">Full code list: VRM data attributes reference &#183; Reset to defaults</text>
+
+  <!-- bottom fields -->
+  <line x1="44" y1="736" x2="676" y2="736" stroke="#e5e3db"/>
+  <text x="44" y="762" font-size="12" font-weight="bold" fill="#3d3d3a">Subject subtype</text>
+  <rect x="44" y="770" width="300" height="30" fill="#fbfaf7" stroke="#c9c7bf" rx="8"/>
+  <text x="56" y="790" font-size="12" fill="#3d3d3a">stationary-object</text>
+  <text x="376" y="762" font-size="12" font-weight="bold" fill="#3d3d3a">Alarm lookback days</text>
+  <rect x="376" y="770" width="300" height="30" fill="#fbfaf7" stroke="#c9c7bf" rx="8"/>
+  <text x="388" y="790" font-size="12" fill="#3d3d3a">7</text>
+</svg>
