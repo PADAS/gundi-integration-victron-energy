@@ -12,6 +12,15 @@ Victron Energy powers remote field infrastructure (radio repeaters, gates, camps
 
 Target UX (validated with a live demo site): subject group "Victron Energy", one subject per installation, popup listing the sensor readings, ~15-minute refresh.
 
+## Scope — two phases
+
+Delivery is split in two phases:
+
+- **Phase 1 — Sensor readings (stationary subjects).** The `auth` action and a `pull_observations` action that reads the diagnostics endpoint per configured installation and sends observations to Gundi/ER. This covers the primary monitoring UX and is what the first customers validate.
+- **Phase 2 — Event data (alerts).** A `pull_events` action mapping VRM alarm-log entries (`started`/`cleared`, device, description) to ER events, with a cursor persisted in the integration state, handling of active vs cleared alarms, and per-site alarm settings. Built after Phase 1 is validated with the first customers.
+
+Sections below describe the full design; alarm/event material applies to Phase 2.
+
 ## VRM API summary
 
 - Base: `https://vrmapi.victronenergy.com/v2` — [docs](https://vrm-api-docs.victronenergy.com/#/) (OpenAPI spec at `/docs/docs/openapi.yaml`)
@@ -36,16 +45,17 @@ The original prototype filtered alarm attributes out of `/diagnostics`. That is 
 ### `auth`
 `AuthActionConfiguration` + `ExecutableActionMixin`. Single field: `token: pydantic.SecretStr` (password widget). Executes `GET /users/me`; stores the VRM user id in state for reuse.
 
-### `pull_observations`
+### `pull_observations` (Phase 1)
 `PullActionConfiguration`, `@crontab_schedule` every 15 minutes. Per run:
 
 1. `GET /users/{id}/installations?extended=1` — resolve site names, check freshness.
-2. For each configured installation:
-   - `GET /installations/{id}/diagnostics` → filter by the sensors-of-interest whitelist → build **one observation**: configured lat/lon, `recorded_at` = newest record timestamp, `additional` = `{description: formattedValue}`.
-   - `GET /installations/{id}/alarm-log` from the state cursor → map new entries to **events** (`title` from `description` + `nameEnum`, event time = `started`, location = configured lat/lon) → advance cursor.
-3. `send_observations_to_gundi(...)` + `send_events_to_gundi(...)`; return counts.
+2. For each configured installation: `GET /installations/{id}/diagnostics` → filter by the sensors-of-interest whitelist → build **one observation**: configured lat/lon, `recorded_at` = newest record timestamp, `additional` = `{description: formattedValue}`.
+3. `send_observations_to_gundi(...)`; return counts.
 
 Requests are throttled/retried (`stamina` on 429/5xx honoring `Retry-After`) to respect the shared rate window — Ol Pejeta alone has 37 installations.
+
+### `pull_events` (Phase 2)
+`PullActionConfiguration`, own crontab schedule. Per configured installation: `GET /installations/{id}/alarm-log` from the state cursor (first run bounded by `alarm_lookback_days`) → map new entries to **events** (`title` from `description` + `nameEnum`, event time = `started`, location = configured lat/lon) → advance cursor → `send_events_to_gundi(...)`.
 
 ## Configuration
 
@@ -56,10 +66,12 @@ class InstallationConfig(pydantic.BaseModel):
     longitude: float
     subject_name: Optional[str]   # defaults to the VRM site name
 
-class PullObservationsConfig(PullActionConfiguration):
+class PullObservationsConfig(PullActionConfiguration):   # Phase 1
     installations: List[InstallationConfig]
     subject_subtype: str = "stationary-object"
     sensors_of_interest: List[str] = [...]   # default whitelist below
+
+class PullEventsConfig(PullActionConfiguration):         # Phase 2
     alarm_lookback_days: int = 7             # first-run alarm-log window
 ```
 
@@ -109,7 +121,7 @@ Verified against both customer accounts: attribute codes and `idDataAttribute` a
 
 ## Open questions for the team
 
-1. **One action or two?** Alarms could move to a separate `pull_events` action with its own schedule. Current lean: one action, both outputs — simpler config, one failure domain.
-2. **Per-installation `subject_subtype`?** Currently one per connection. Needed if e.g. repeaters and solar plants should be different subject types.
-3. **Alarms toggle?** A boolean to disable event emission for customers that only want readings.
-4. **Alarm-cleared events:** emit a second "resolved" event when `cleared` is set, or only alarm-start events?
+1. **Per-installation `subject_subtype`?** Currently one per connection. Needed if e.g. repeaters and solar plants should be different subject types.
+2. **Alarm-cleared events (Phase 2):** emit a second "resolved" event when `cleared` is set, or only alarm-start events?
+
+(Resolved: readings and alarms are split into separate `pull_observations` / `pull_events` actions, delivered as Phase 1 and Phase 2 — see Scope. This also answers the "alarms toggle" question: customers that only want readings simply don't configure `pull_events`.)
