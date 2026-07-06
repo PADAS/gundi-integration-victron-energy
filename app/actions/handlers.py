@@ -87,8 +87,8 @@ def build_observation(site, override, readings: dict, newest_ts: int, subject_su
         "location": {
             # VRM has no coordinates; without an override the subject lands at
             # 0,0 and is repositioned on the EarthRanger side.
-            "lat": override.latitude if override else 0.0,
-            "lon": override.longitude if override else 0.0,
+            "lat": float(override.latitude) if override else 0.0,
+            "lon": float(override.longitude) if override else 0.0,
         },
         "additional": readings,
     }
@@ -166,9 +166,12 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                 for s in await client.get_installations(token, user["id"])
             }
 
-    overrides_by_id = {o.installation_id: o for o in action_config.location_overrides}
-    excluded = set(action_config.excluded_installations)
-    for id_site in overrides_by_id.keys() - sites_by_id.keys():
+    # Config ids arrive as strings from the portal form; VRM idSite is an int.
+    # Normalize on strings for all comparisons.
+    overrides_by_id = {str(o.installation_id): o for o in action_config.location_overrides}
+    excluded = {str(i) for i in action_config.excluded_installations}
+    site_ids = {str(id_site) for id_site in sites_by_id}
+    for id_site in overrides_by_id.keys() - site_ids:
         await warn_throttled(
             integration_id,
             f"invisible.{id_site}",
@@ -180,7 +183,8 @@ async def action_pull_observations(integration, action_config: PullObservationsC
     skipped = []
     failed = []
     for id_site, site in sites_by_id.items():
-        if id_site in excluded:
+        site_key = str(id_site)
+        if site_key in excluded:
             continue
         if now - site.get("last_timestamp", 0) > max_age_seconds:
             skipped.append(id_site)
@@ -211,7 +215,7 @@ async def action_pull_observations(integration, action_config: PullObservationsC
             continue
         observations.append(
             build_observation(
-                site, overrides_by_id.get(id_site), readings, newest_ts,
+                site, overrides_by_id.get(site_key), readings, newest_ts,
                 action_config.subject_subtype,
             )
         )
@@ -226,7 +230,7 @@ async def action_pull_observations(integration, action_config: PullObservationsC
     result = {
         "observations_extracted": len(observations),
         "installations_found": len(sites_by_id),
-        "installations_excluded": len(excluded & sites_by_id.keys()),
+        "installations_excluded": len(excluded & site_ids),
         "installations_skipped": len(skipped),
     }
     if failed:

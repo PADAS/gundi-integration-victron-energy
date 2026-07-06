@@ -90,26 +90,24 @@ DEFAULT_SENSORS_OF_INTEREST = [
 
 class LocationOverride(pydantic.BaseModel):
     """Optional placement/naming for one auto-discovered installation."""
-    installation_id: int = pydantic.Field(
+    installation_id: str = pydantic.Field(
         ...,
         title="Installation ID",
         description="The VRM installation id. Run 'Test Connection' on the "
                     "authentication section to list all installations "
                     "available to your token, with their ids and names.",
     )
-    latitude: float = pydantic.Field(
+    # Strings, not floats: the portal form submits numbers inside array items
+    # as strings, which fail ajv's "must be number" check. Validated below.
+    latitude: str = pydantic.Field(
         ...,
-        ge=-90,
-        le=90,
         title="Latitude",
-        description="Subject location latitude in decimal degrees.",
+        description="Subject location latitude in decimal degrees (-90 to 90).",
     )
-    longitude: float = pydantic.Field(
+    longitude: str = pydantic.Field(
         ...,
-        ge=-180,
-        le=180,
         title="Longitude",
-        description="Subject location longitude in decimal degrees.",
+        description="Subject location longitude in decimal degrees (-180 to 180).",
     )
     subject_name: Optional[str] = pydantic.Field(
         None,
@@ -117,6 +115,18 @@ class LocationOverride(pydantic.BaseModel):
         description="Optional name for the subject in EarthRanger. "
                     "Defaults to the VRM site name.",
     )
+
+    @pydantic.validator("latitude")
+    def _valid_latitude(cls, v):
+        if not -90 <= float(v) <= 90:
+            raise ValueError("latitude must be between -90 and 90")
+        return v
+
+    @pydantic.validator("longitude")
+    def _valid_longitude(cls, v):
+        if not -180 <= float(v) <= 180:
+            raise ValueError("longitude must be between -180 and 180")
+        return v
 
 
 class AuthenticateConfig(AuthActionConfiguration, ExecutableActionMixin):
@@ -184,7 +194,7 @@ class PullObservationsConfig(PullActionConfiguration, ExecutableActionMixin):
                     "an override here are created at latitude 0, longitude 0 "
                     "and can be repositioned on the EarthRanger side.",
     )
-    excluded_installations: List[int] = FieldWithUIOptions(
+    excluded_installations: List[str] = FieldWithUIOptions(
         [],
         title="Excluded installations",
         description="Optional: VRM installation ids that should NOT be synced "
