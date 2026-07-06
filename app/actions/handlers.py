@@ -73,19 +73,21 @@ def build_readings(diagnostics: list, sensor_codes: set) -> tuple:
     return readings, newest_ts
 
 
-def build_observation(installation, site, readings: dict, newest_ts: int, subject_subtype: str) -> dict:
+def build_observation(site, override, readings: dict, newest_ts: int, subject_subtype: str) -> dict:
     return {
         # idSite, not the GX device identifier: survives gateway hardware swaps
-        "source": str(installation.installation_id),
-        "source_name": installation.subject_name or site.get("name") or str(installation.installation_id),
+        "source": str(site["idSite"]),
+        "source_name": (override.subject_name if override else None) or site.get("name") or str(site["idSite"]),
         "type": "stationary-object",
         "subtype": subject_subtype,
         "recorded_at": datetime.datetime.fromtimestamp(
             newest_ts, tz=datetime.timezone.utc
         ).isoformat(),
         "location": {
-            "lat": installation.latitude,
-            "lon": installation.longitude,
+            # VRM has no coordinates; without an override the subject lands at
+            # 0,0 and is repositioned on the EarthRanger side.
+            "lat": override.latitude if override else 0.0,
+            "lon": override.longitude if override else 0.0,
         },
         "additional": readings,
     }
@@ -163,20 +165,21 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                 for s in await client.get_installations(token, user["id"])
             }
 
+    overrides_by_id = {o.installation_id: o for o in action_config.location_overrides}
+    excluded = set(action_config.excluded_installations)
+    for id_site in overrides_by_id.keys() - sites_by_id.keys():
+        await warn_throttled(
+            integration_id,
+            f"invisible.{id_site}",
+            f"Location override for installation {id_site} matches no installation "
+            f"visible to this VRM account. Check the installation ID.",
+        )
+
     observations = []
     skipped = []
     failed = []
-    for installation in action_config.installations:
-        id_site = installation.installation_id
-        site = sites_by_id.get(id_site)
-        if site is None:
-            skipped.append(id_site)
-            await warn_throttled(
-                integration_id,
-                f"invisible.{id_site}",
-                f"Installation {id_site} is not visible to this VRM account. "
-                f"Check the installation ID and that the token belongs to the right account.",
-            )
+    for id_site, site in sites_by_id.items():
+        if id_site in excluded:
             continue
         if now - site.get("last_timestamp", 0) > max_age_seconds:
             skipped.append(id_site)
@@ -207,7 +210,8 @@ async def action_pull_observations(integration, action_config: PullObservationsC
             continue
         observations.append(
             build_observation(
-                installation, site, readings, newest_ts, action_config.subject_subtype
+                site, overrides_by_id.get(id_site), readings, newest_ts,
+                action_config.subject_subtype,
             )
         )
 
@@ -220,7 +224,8 @@ async def action_pull_observations(integration, action_config: PullObservationsC
 
     result = {
         "observations_extracted": len(observations),
-        "installations_processed": len(action_config.installations),
+        "installations_found": len(sites_by_id),
+        "installations_excluded": len(excluded & sites_by_id.keys()),
         "installations_skipped": len(skipped),
     }
     if failed:

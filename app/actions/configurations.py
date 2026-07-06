@@ -41,6 +41,32 @@ class SensorCode(str, Enum):
     DC_SYSTEM = "dc"                 # DC System
 
 
+# Human labels shown next to each checkbox in the portal ("enumNames").
+SENSOR_LABELS = {
+    SensorCode.VOLTAGE: "Voltage (V) — Battery Monitor",
+    SensorCode.BATTERY_TEMPERATURE: "Battery temperature (BT)",
+    SensorCode.CONSUMED_AMPHOURS: "Consumed Amphours (CE)",
+    SensorCode.CURRENT: "Current (I) — Battery Monitor",
+    SensorCode.MAX_CELL_VOLTAGE: "Maximum cell voltage (McV)",
+    SensorCode.MIN_CELL_VOLTAGE: "Minimum cell voltage (mcV)",
+    SensorCode.MAX_CELL_TEMPERATURE: "Maximum cell temperature (McT)",
+    SensorCode.MIN_CELL_TEMPERATURE: "Minimum cell temperature (mcT)",
+    SensorCode.STATE_OF_CHARGE: "State of charge (SOC)",
+    SensorCode.TIME_TO_GO: "Time to go (TTG)",
+    SensorCode.PV_POWER: "PV power (PVP)",
+    SensorCode.PV_VOLTAGE: "PV voltage (PVV)",
+    SensorCode.YIELD_TODAY: "Yield today (YT)",
+    SensorCode.YIELD_YESTERDAY: "Yield yesterday (YY)",
+    SensorCode.CHARGE_STATE: "Charge state (ScS)",
+    SensorCode.CHARGER_ERROR_CODE: "Solar charger error code (ScERR)",
+    SensorCode.SYSTEM_VOLTAGE: "Voltage (bv) — System overview fallback",
+    SensorCode.SYSTEM_CURRENT: "Current (bc) — System overview fallback",
+    SensorCode.SYSTEM_BATTERY_SOC: "Battery SOC (bs) — System overview fallback",
+    SensorCode.SYSTEM_BATTERY_POWER: "Battery power (bp) — System overview fallback",
+    SensorCode.PV_DC_COUPLED: "PV - DC-coupled (Pdc)",
+    SensorCode.DC_SYSTEM: "DC System (dc)",
+}
+
 DEFAULT_SENSORS_OF_INTEREST = [
     SensorCode.VOLTAGE,
     SensorCode.BATTERY_TEMPERATURE,
@@ -62,24 +88,21 @@ DEFAULT_SENSORS_OF_INTEREST = [
 ]
 
 
-class InstallationConfig(pydantic.BaseModel):
-    """One VRM installation to monitor as a stationary subject."""
+class LocationOverride(pydantic.BaseModel):
+    """Optional placement/naming for one auto-discovered installation."""
     installation_id: int = pydantic.Field(
         ...,
         title="Installation ID",
         description="The VRM installation id. Run 'Test Connection' on the "
-                    "authentication section above to list all installations "
-                    "available to your token, with their ids and names. "
-                    "(Also visible in the URL when viewing the installation "
-                    "in the VRM dashboard.)",
+                    "authentication section to list all installations "
+                    "available to your token, with their ids and names.",
     )
     latitude: float = pydantic.Field(
         ...,
         ge=-90,
         le=90,
         title="Latitude",
-        description="Subject location latitude in decimal degrees. The VRM API "
-                    "does not provide coordinates, so the location is fixed here.",
+        description="Subject location latitude in decimal degrees.",
     )
     longitude: float = pydantic.Field(
         ...,
@@ -113,15 +136,14 @@ class AuthenticateConfig(AuthActionConfiguration, ExecutableActionMixin):
         order=["token"],
     )
 
+    class Config:
+        title = "Authentication"
 
-class PullObservationsConfig(PullActionConfiguration):
-    installations: List[InstallationConfig] = FieldWithUIOptions(
-        ...,
-        title="Installations",
-        description="VRM installations to monitor. Each becomes a stationary "
-                    "subject in EarthRanger at the configured location.",
-        min_items=1,
-    )
+
+class PullObservationsConfig(PullActionConfiguration, ExecutableActionMixin):
+    """All installations visible to the VRM token are synced automatically —
+    no per-installation setup is required. Each becomes a stationary subject
+    in EarthRanger."""
     subject_subtype: str = FieldWithUIOptions(
         "sensor",
         title="Subject subtype",
@@ -154,14 +176,56 @@ class PullObservationsConfig(PullActionConfiguration):
         description="If an installation has not reported for longer than this, "
                     "no observation is sent until data resumes.",
     )
+    location_overrides: List[LocationOverride] = FieldWithUIOptions(
+        [],
+        title="Location overrides",
+        description="Optional: place specific installations on the map. The VRM "
+                    "API does not provide coordinates, so installations without "
+                    "an override here are created at latitude 0, longitude 0 "
+                    "and can be repositioned on the EarthRanger side.",
+    )
+    excluded_installations: List[int] = FieldWithUIOptions(
+        [],
+        title="Excluded installations",
+        description="Optional: VRM installation ids that should NOT be synced "
+                    "to EarthRanger.",
+    )
+    # Inherited from PullActionConfiguration; hidden from the portal form —
+    # all our connections run on the schedule.
+    run_on_schedule: bool = FieldWithUIOptions(
+        True,
+        title="Run On Schedule",
+        ui_options=UIOptions(
+            widget="hidden",
+        ),
+    )
 
     ui_global_options: GlobalUISchemaOptions = GlobalUISchemaOptions(
         order=[
-            "installations",
             "subject_subtype",
             "sensors_of_interest",
             "additional_sensor_codes",
             "max_data_age_hours",
+            "location_overrides",
+            "excluded_installations",
             "run_on_schedule",  # inherited from PullActionConfiguration
         ],
     )
+
+    class Config:
+        title = "Configuration Settings"
+
+        @staticmethod
+        def schema_extra(schema: dict, model) -> None:
+            # Inline the sensor enum with human-readable labels: the portal's
+            # form renderer doesn't resolve $ref inside array items, and
+            # enumNames is what makes the checkbox list legible.
+            sensors = schema.get("properties", {}).get("sensors_of_interest")
+            if sensors is not None:
+                sensors["items"] = {
+                    "type": "string",
+                    "enum": [c.value for c in SENSOR_LABELS],
+                    "enumNames": list(SENSOR_LABELS.values()),
+                }
+                sensors["uniqueItems"] = True
+            schema.get("definitions", {}).pop("SensorCode", None)

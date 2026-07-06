@@ -13,7 +13,7 @@ from app.actions.handlers import (
 )
 from app.actions.configurations import (
     AuthenticateConfig,
-    InstallationConfig,
+    LocationOverride,
     PullObservationsConfig,
 )
 
@@ -34,15 +34,15 @@ def diag_record(code, description, value, device="Battery Monitor", ts=None):
 
 
 @pytest.fixture
-def installation():
-    return InstallationConfig(
+def override():
+    return LocationOverride(
         installation_id=505735, latitude=-13.104724, longitude=31.784705
     )
 
 
 @pytest.fixture
-def pull_config(installation):
-    return PullObservationsConfig(installations=[installation])
+def pull_config(override):
+    return PullObservationsConfig(location_overrides=[override])
 
 
 @pytest.fixture
@@ -183,7 +183,7 @@ async def test_pull_observations_happy_path(
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_pull_observations_skips_invisible_installation(
+async def test_pull_observations_warns_on_unmatched_override(
     mock_integration, pull_config, patch_pull_dependencies
 ):
     mock_send, mock_log_activity = patch_pull_dependencies
@@ -192,10 +192,59 @@ async def test_pull_observations_skips_invisible_installation(
     result = await action_pull_observations(mock_integration, pull_config)
 
     assert result["observations_extracted"] == 0
-    assert result["installations_skipped"] == 1
+    assert result["installations_found"] == 0
     mock_send.assert_not_called()
     mock_log_activity.assert_awaited_once()
-    assert "not visible" in mock_log_activity.call_args.kwargs["title"]
+    assert "matches no installation" in mock_log_activity.call_args.kwargs["title"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_pull_observations_auto_discovers_without_config(
+    mock_integration, patch_pull_dependencies
+):
+    mock_send, _ = patch_pull_dependencies
+    config = PullObservationsConfig()  # zero installation setup
+    mock_vrm_account([
+        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
+    ])
+    respx.get(f"{VRM}/installations/505735/diagnostics").mock(
+        return_value=Response(200, json={"success": True, "records": [
+            diag_record("V", "Voltage", "53.26 V"),
+        ]})
+    )
+
+    result = await action_pull_observations(mock_integration, config)
+
+    assert result["observations_extracted"] == 1
+    obs = mock_send.call_args.kwargs["observations"][0]
+    assert obs["source"] == "505735"
+    assert obs["location"] == {"lat": 0.0, "lon": 0.0}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_pull_observations_excludes_installations(
+    mock_integration, patch_pull_dependencies
+):
+    mock_send, _ = patch_pull_dependencies
+    config = PullObservationsConfig(excluded_installations=[332245])
+    mock_vrm_account([
+        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
+        {"idSite": 332245, "name": "Solio Repeater", "last_timestamp": int(NOW - 300)},
+    ])
+    respx.get(f"{VRM}/installations/505735/diagnostics").mock(
+        return_value=Response(200, json={"success": True, "records": [
+            diag_record("V", "Voltage", "53.26 V"),
+        ]})
+    )
+
+    result = await action_pull_observations(mock_integration, config)
+
+    assert result["observations_extracted"] == 1
+    assert result["installations_excluded"] == 1
+    sources = [o["source"] for o in mock_send.call_args.kwargs["observations"]]
+    assert sources == ["505735"]
 
 
 @pytest.mark.asyncio
@@ -219,11 +268,10 @@ async def test_pull_observations_skips_stale_site(
 @pytest.mark.asyncio
 @respx.mock
 async def test_pull_observations_continues_after_site_failure(
-    mock_integration, installation, patch_pull_dependencies
+    mock_integration, patch_pull_dependencies
 ):
     mock_send, _ = patch_pull_dependencies
-    healthy = InstallationConfig(installation_id=332245, latitude=0.028, longitude=36.888)
-    config = PullObservationsConfig(installations=[installation, healthy])
+    config = PullObservationsConfig()
     mock_vrm_account([
         {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
         {"idSite": 332245, "name": "Solio Repeater", "last_timestamp": int(NOW - 300)},
@@ -267,11 +315,10 @@ async def test_pull_observations_warning_throttled(
 @pytest.mark.asyncio
 @respx.mock
 async def test_pull_observations_additional_sensor_codes(
-    mock_integration, installation, patch_pull_dependencies
+    mock_integration, patch_pull_dependencies
 ):
     mock_send, _ = patch_pull_dependencies
     config = PullObservationsConfig(
-        installations=[installation],
         sensors_of_interest=[],
         additional_sensor_codes=["gs"],
     )
