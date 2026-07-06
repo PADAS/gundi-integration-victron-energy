@@ -217,15 +217,18 @@ class PullObservationsConfig(PullActionConfiguration, ExecutableActionMixin):
 
         @staticmethod
         def schema_extra(schema: dict, model) -> None:
-            # Inline the sensor enum with human-readable labels: the portal's
-            # form renderer doesn't resolve $ref inside array items, and
-            # enumNames is what makes the checkbox list legible.
+            # Inline the sensor options with human-readable labels: the portal's
+            # form renderer doesn't resolve $ref inside array items. Labels use
+            # the standard oneOf/const/title form — NOT "enumNames", which is an
+            # rjsf extension that ajv (strict mode) rejects as an unknown keyword.
             sensors = schema.get("properties", {}).get("sensors_of_interest")
             if sensors is not None:
                 sensors["items"] = {
                     "type": "string",
-                    "enum": [c.value for c in SENSOR_LABELS],
-                    "enumNames": list(SENSOR_LABELS.values()),
+                    "oneOf": [
+                        {"const": code.value, "title": label}
+                        for code, label in SENSOR_LABELS.items()
+                    ],
                 }
                 sensors["uniqueItems"] = True
             schema.get("definitions", {}).pop("SensorCode", None)

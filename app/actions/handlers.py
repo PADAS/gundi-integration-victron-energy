@@ -3,6 +3,7 @@ import logging
 
 import httpx
 import stamina
+from gundi_core.events import LogLevel
 
 import app.actions.client as client
 
@@ -103,7 +104,7 @@ async def warn_throttled(integration_id: str, key: str, title: str, data: dict =
     await log_action_activity(
         integration_id=integration_id,
         action_id="pull_observations",
-        level="WARNING",
+        level=LogLevel.WARNING,
         title=title,
         data=data or {},
     )
