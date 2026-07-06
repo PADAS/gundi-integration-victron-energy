@@ -10,7 +10,7 @@ Victron Energy powers remote field infrastructure (radio repeaters, gates, camps
 - **Sensor readings → observations.** Each VRM installation becomes a **stationary subject** (fixed, configured location). The latest readings (battery voltage, state of charge, current, temperature, solar charger status…) travel in the observation `additional` and show up in the ER subject popup.
 - **Alarms → events.** VRM alarms (low battery, device errors, no-data/communication loss, geofence, user-defined threshold alarms) become ER events at the installation's location.
 
-Target UX (validated with a live demo site): subject group "Victron Energy", one subject per installation, popup listing the sensor readings, ~15-minute refresh.
+Target UX (validated with a live demo site): subject group "Victron Energy", one subject per installation, popup listing the sensor readings, ~10-minute refresh.
 
 ## Scope — two phases
 
@@ -46,13 +46,23 @@ The original prototype filtered alarm attributes out of `/diagnostics`. That is 
 `AuthActionConfiguration` + `ExecutableActionMixin`. Single field: `token: pydantic.SecretStr` (password widget). Executes `GET /users/me`; stores the VRM user id in state for reuse.
 
 ### `pull_observations` (Phase 1)
-`PullActionConfiguration`, `@crontab_schedule` every 15 minutes. Per run:
+`PullActionConfiguration`, `@crontab_schedule` every **10 minutes**. Per run:
 
 1. `GET /users/{id}/installations?extended=1` — resolve site names, check freshness.
 2. For each configured installation: `GET /installations/{id}/diagnostics` → filter by the sensors-of-interest whitelist → build **one observation**: configured lat/lon, `recorded_at` = newest record timestamp, `additional` = `{description: formattedValue}`.
 3. `send_observations_to_gundi(...)`; return counts.
 
 Requests are throttled/retried (`stamina` on 429/5xx honoring `Retry-After`) to respect the shared rate window — Ol Pejeta alone has 37 installations.
+
+**Observation schema** follows the convention used by the OpenWeather and ZentraCloud connectors: `type: "stationary-object"` + `subtype` (default **`sensor`**, user-configurable — ER sites map icons per subtype). `source` = the VRM **`idSite`**, not the GX device `identifier` — the identifier is a hardware serial that changes when a gateway is replaced (observed at a real site), which would orphan the ER subject and its history.
+
+**Partial-failure semantics:** one broken installation must not blind the healthy ones. Per-site failures are caught, the run continues, and failures are reported in the run summary and as throttled warnings.
+
+**Activity logging** (portal feed is user-facing — log what a user can act on, throttle what repeats):
+- *INFO*: run summary via return dict (`observations_extracted`, `installations_processed`, `installations_skipped`).
+- *WARNING* (throttled to ~once/day per installation via the state manager): configured installation not visible to the account (wrong ID or wrong token); site skipped as stale (message includes last-data time); whitelisted sensor codes matching nothing anywhere (probable case typo).
+- *ERROR*: VRM 401 (token revoked — message tells the user to generate a new token); persistent 5xx / rate-limit exhaustion; Gundi send failure.
+- Debug detail (per-record drops, dedup decisions, successful retries) goes to stdout/GCP logs only, never the portal feed.
 
 ### `pull_events` (Phase 2)
 `PullActionConfiguration`, own crontab schedule. Per configured installation: `GET /installations/{id}/alarm-log` from the state cursor (first run bounded by `alarm_lookback_days`) → map new entries to **events** (`title` from `description` + `nameEnum`, event time = `started`, location = configured lat/lon) → advance cursor → `send_events_to_gundi(...)`.
@@ -68,12 +78,16 @@ class InstallationConfig(pydantic.BaseModel):
 
 class PullObservationsConfig(PullActionConfiguration):   # Phase 1
     installations: List[InstallationConfig]
-    subject_subtype: str = "stationary-object"
-    sensors_of_interest: List[str] = [...]   # default whitelist below
+    subject_subtype: str = "sensor"          # user-configurable, ER maps icon
+    sensors_of_interest: List[SensorCode] = [...]   # curated enum, default whitelist below
+    additional_sensor_codes: List[str] = []  # free-text escape hatch for uncurated codes
+    max_data_age_hours: int = 24             # site-level staleness cutoff (see Edge cases)
 
 class PullEventsConfig(PullActionConfiguration):         # Phase 2
     alarm_lookback_days: int = 7             # first-run alarm-log window
 ```
+
+**Sensor selection is hybrid:** `sensors_of_interest` is a curated enum (~20 known codes rendered as a multi-select with human-readable titles, e.g. "Voltage (V)", "Battery temperature (BT)"), while `additional_sensor_codes` is a free-text list for power users adding any other VRM attribute code. Both feed the same whitelist at runtime.
 
 EarthRanger credentials/base_url are **never** stored here — they live on the destination integration and are resolved at runtime.
 
@@ -106,8 +120,8 @@ Verified against both customer accounts: attribute codes and `idDataAttribute` a
 ## Edge cases (all observed in real customer data)
 
 - **Codes are case-sensitive:** `BT` (battery temperature) ≠ `bt`; `McV` (max cell voltage) ≠ `mcV` (min).
-- **Stale per-record timestamps:** one live site returns solar-charger records frozen at **2021** (replaced hardware) while its system-overview records are current. Records older than a threshold (default: a few poll intervals) are dropped, otherwise ER would present years-old readings as current.
-- **Dead sites:** several installations have sent nothing for years, some with permanent no-data alarms. Skipped without erroring; no observation emitted.
+- **Stale per-record timestamps:** one live site returns solar-charger records frozen at **2021** (replaced hardware) while its system-overview records are current. Records significantly older than the site's newest record (~1 h behind) are dropped, otherwise ER would present years-old readings as current. Note `recorded_at` honestly carries the reading time, so ER's "last update" never lies — this filter is about not mixing ancient values into a current-looking popup.
+- **Dead sites:** several installations have sent nothing for years, some with permanent no-data alarms. A site whose newest data is older than `max_data_age_hours` (default 24, configurable) emits no observation and a throttled warning; it recovers automatically when data resumes.
 - **Missing attributes:** whitelisted codes absent on a site (no BMS, no temp sensor) are skipped silently — each subject shows its own subset.
 - **Duplicate readings:** the same quantity exists on multiple devices (Battery Monitor `V` vs System overview `bv`). Battery Monitor wins; System overview is the fallback.
 - **Rate limiting:** many-site accounts fan out to 1–2 requests per site per poll; throttle and honor `Retry-After` on 429.
@@ -118,10 +132,11 @@ Verified against both customer accounts: attribute codes and `idDataAttribute` a
 - The demo site's ER popup (8 fields) was reproduced exactly by the whitelist strategy.
 - A real active alarm was read from the alarm-log (`Solar Charger — Error code — #38 PV Input shutdown`, started 2025-12-30, still active).
 - Reproduce with [`local/vrm_readings.py`](../local/vrm_readings.py): `VRM_TOKEN=<token> python3 local/vrm_readings.py [idSite ...]`
+- **End-to-end PoC (2026-07-06):** [`local/vrm_to_gundi_poc.py`](../local/vrm_to_gundi_poc.py) pulls VRM diagnostics, shapes standard Gundi v2 observations, and POSTs them to the stage sensors API (`/v2/observations/` — trailing slash required, the redirect otherwise turns POST into GET). Verified with both accounts: single-site (Robin Pope, rendering correctly in stage ER at its real location with all readings) and multi-site batch (3 Ol Pejeta installations → 3 separate subjects, HTTP 200). Each installation is a separate `source` → separate ER subject.
 
 ## Open questions for the team
 
-1. **Per-installation `subject_subtype`?** Currently one per connection. Needed if e.g. repeaters and solar plants should be different subject types.
+1. **Per-installation `subject_subtype`?** Currently one per connection (default `sensor`). Worth a per-installation override if e.g. repeaters and solar plants should carry different icons.
 2. **Alarm-cleared events (Phase 2):** emit a second "resolved" event when `cleared` is set, or only alarm-start events?
 
 (Resolved: readings and alarms are split into separate `pull_observations` / `pull_events` actions, delivered as Phase 1 and Phase 2 — see Scope. This also answers the "alarms toggle" question: customers that only want readings simply don't configure `pull_events`.)
