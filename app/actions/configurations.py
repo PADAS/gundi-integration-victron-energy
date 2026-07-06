@@ -156,5 +156,6 @@ class PullObservationsConfig(PullActionConfiguration):
             "sensors_of_interest",
             "additional_sensor_codes",
             "max_data_age_hours",
+            "run_on_schedule",  # inherited from PullActionConfiguration
         ],
     )
