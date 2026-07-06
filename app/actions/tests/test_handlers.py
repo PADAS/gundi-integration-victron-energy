@@ -128,12 +128,15 @@ class TestBuildReadings:
 @respx.mock
 async def test_action_auth_success(mocker, mock_integration):
     mocker.patch("app.services.activity_logger.publish_event", AsyncMock())
-    respx.get(f"{VRM}/users/me").mock(
-        return_value=Response(200, json={"success": True, "user": {"id": 66846, "name": "Kennedy"}})
-    )
+    mock_vrm_account([
+        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
+    ])
     result = await action_auth(mock_integration, AuthenticateConfig(token="good"))
     assert result["valid_credentials"] is True
     assert result["user_id"] == 66846
+    assert result["installations_found"] == 1
+    assert result["installations"][0]["installation_id"] == 505735
+    assert result["installations"][0]["name"] == "Robin Pope"
 
 
 @pytest.mark.asyncio

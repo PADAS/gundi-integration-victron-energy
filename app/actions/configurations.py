@@ -67,8 +67,11 @@ class InstallationConfig(pydantic.BaseModel):
     installation_id: int = pydantic.Field(
         ...,
         title="Installation ID",
-        description="The VRM installation id, visible in the URL when viewing "
-                    "the installation in the VRM dashboard.",
+        description="The VRM installation id. Run 'Test Connection' on the "
+                    "authentication section above to list all installations "
+                    "available to your token, with their ids and names. "
+                    "(Also visible in the URL when viewing the installation "
+                    "in the VRM dashboard.)",
     )
     latitude: float = pydantic.Field(
         ...,
@@ -137,8 +140,11 @@ class PullObservationsConfig(PullActionConfiguration):
     additional_sensor_codes: List[str] = FieldWithUIOptions(
         [],
         title="Additional sensor codes",
-        description="Any other VRM data-attribute codes to include (case-sensitive; "
-                    "see https://vrmapi.victronenergy.com/v2/data-attributes).",
+        description="Optional, for advanced users: any other VRM data-attribute "
+                    "codes to include beyond the list above. Codes are "
+                    "case-sensitive, e.g. 'PVV' (PV voltage), 'gs' (generator "
+                    "state), 'mcT' (minimum cell temperature). Most setups can "
+                    "leave this empty.",
     )
     max_data_age_hours: int = FieldWithUIOptions(
         24,

@@ -113,14 +113,29 @@ async def warn_throttled(integration_id: str, key: str, title: str, data: dict =
 @activity_logger()
 async def action_auth(integration, action_config: AuthenticateConfig):
     logger.info(f"Executing auth action with integration {integration}...")
+    token = action_config.token.get_secret_value()
     try:
-        user = await client.get_current_user(action_config.token.get_secret_value())
+        user = await client.get_current_user(token)
     except client.VRMUnauthorizedException:
         return {"valid_credentials": False}
+    # List the visible installations so the user can copy the IDs straight
+    # from the Test Connection result when filling the pull_observations form.
+    installations = await client.get_installations(token, user["id"])
     return {
         "valid_credentials": True,
         "user_id": user.get("id"),
         "user_name": user.get("name"),
+        "installations_found": len(installations),
+        "installations": [
+            {
+                "installation_id": s["idSite"],
+                "name": s.get("name"),
+                "last_data_at": datetime.datetime.fromtimestamp(
+                    s["last_timestamp"], tz=datetime.timezone.utc
+                ).isoformat() if s.get("last_timestamp") else None,
+            }
+            for s in installations
+        ],
     }
 
 
