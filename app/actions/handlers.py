@@ -80,7 +80,7 @@ def build_observation(site, override, readings: dict, newest_ts: int, subject_su
         "source": str(site["idSite"]),
         "source_name": (override.subject_name if override else None) or site.get("name") or str(site["idSite"]),
         "type": "stationary-object",
-        "subtype": subject_subtype,
+        "subject_type": subject_subtype,
         "recorded_at": datetime.datetime.fromtimestamp(
             newest_ts, tz=datetime.timezone.utc
         ).isoformat(),
