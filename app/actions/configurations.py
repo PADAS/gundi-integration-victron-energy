@@ -155,7 +155,7 @@ class PullObservationsConfig(PullActionConfiguration, ExecutableActionMixin):
     no per-installation setup is required. Each becomes a stationary subject
     in EarthRanger."""
     subject_subtype: str = FieldWithUIOptions(
-        "sensor",
+        "static-sensor",
         title="Subject subtype",
         description="EarthRanger subject subtype applied to all subjects "
                     "created by this connection.",

@@ -176,7 +176,7 @@ async def test_pull_observations_happy_path(
     assert obs["source"] == "505735"
     assert obs["source_name"] == "Robin Pope"
     assert obs["type"] == "stationary-object"
-    assert obs["subject_type"] == "sensor"
+    assert obs["subject_type"] == "static-sensor"
     assert obs["location"] == {"lat": -13.104724, "lon": 31.784705}
     assert obs["additional"] == {"Voltage": "53.26 V", "State of charge": "95.0 %"}
 
