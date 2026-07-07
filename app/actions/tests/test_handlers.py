@@ -36,7 +36,7 @@ def diag_record(code, description, value, device="Battery Monitor", ts=None):
 @pytest.fixture
 def override():
     return LocationOverride(
-        installation_id=505735, latitude=-13.104724, longitude=31.784705
+        installation_id="505735", latitude="-13.104724", longitude="31.784705"
     )
 
 
@@ -176,7 +176,7 @@ async def test_pull_observations_happy_path(
     assert obs["source"] == "505735"
     assert obs["source_name"] == "Robin Pope"
     assert obs["type"] == "stationary-object"
-    assert obs["subtype"] == "sensor"
+    assert obs["subject_type"] == "sensor"
     assert obs["location"] == {"lat": -13.104724, "lon": 31.784705}
     assert obs["additional"] == {"Voltage": "53.26 V", "State of charge": "95.0 %"}
 
@@ -228,7 +228,7 @@ async def test_pull_observations_excludes_installations(
     mock_integration, patch_pull_dependencies
 ):
     mock_send, _ = patch_pull_dependencies
-    config = PullObservationsConfig(excluded_installations=[332245])
+    config = PullObservationsConfig(excluded_installations=["332245"])
     mock_vrm_account([
         {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
         {"idSite": 332245, "name": "Solio Repeater", "last_timestamp": int(NOW - 300)},
@@ -299,17 +299,17 @@ async def test_pull_observations_warning_throttled(
     mocker, mock_integration, pull_config, patch_pull_dependencies
 ):
     mock_send, mock_log_activity = patch_pull_dependencies
-    # State says we already warned recently
+    # State says we already warned about this override recently
     mocker.patch.object(
         handlers.state_manager, "get_state",
         AsyncMock(return_value={"warned_at": NOW - 60}),
     )
-    mock_vrm_account([])
+    mock_vrm_account([])  # override 505735 matches no visible site
 
     result = await action_pull_observations(mock_integration, pull_config)
 
-    assert result["installations_skipped"] == 1
-    mock_log_activity.assert_not_awaited()
+    assert result["installations_found"] == 0
+    mock_log_activity.assert_not_awaited()  # throttled, not re-logged
 
 
 @pytest.mark.asyncio
