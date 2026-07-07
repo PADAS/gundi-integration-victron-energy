@@ -41,7 +41,8 @@ class SensorCode(str, Enum):
     DC_SYSTEM = "dc"                 # DC System
 
 
-# Human labels shown next to each checkbox in the portal ("enumNames").
+# Human labels shown next to each checkbox in the portal, emitted as
+# oneOf/const/title options in the schema (see Config.schema_extra below).
 SENSOR_LABELS = {
     SensorCode.VOLTAGE: "Voltage (V) — Battery Monitor",
     SensorCode.BATTERY_TEMPERATURE: "Battery temperature (BT)",

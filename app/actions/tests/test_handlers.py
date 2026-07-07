@@ -267,6 +267,26 @@ async def test_pull_observations_skips_stale_site(
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_pull_observations_skips_site_that_never_reported(
+    mock_integration, patch_pull_dependencies
+):
+    mock_send, mock_log_activity = patch_pull_dependencies
+    mock_vrm_account([
+        {"idSite": 505735, "name": "Robin Pope"},  # no last_timestamp at all
+    ])
+
+    result = await action_pull_observations(mock_integration, PullObservationsConfig())
+
+    assert result["observations_extracted"] == 0
+    assert result["installations_skipped"] == 1
+    mock_send.assert_not_called()
+    title = mock_log_activity.call_args.kwargs["title"]
+    assert "has not reported data ever" in title
+    assert "1970" not in title
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_pull_observations_continues_after_site_failure(
     mock_integration, patch_pull_dependencies
 ):

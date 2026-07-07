@@ -15,6 +15,7 @@ are hardcoded below (same role as the future action config).
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -106,6 +107,8 @@ def main():
     if dry_run or not observations:
         print("-- dry run, nothing sent --" if dry_run else "-- nothing to send --")
         return
+    if not GUNDI_API_KEY:
+        sys.exit("GUNDI_API_KEY is not set — use --dry-run or export the key.")
 
     req = urllib.request.Request(
         f"{GUNDI_SENSORS_URL}/v2/observations/",

@@ -43,7 +43,7 @@ The original prototype filtered alarm attributes out of `/diagnostics`. That is 
 ## Actions
 
 ### `auth`
-`AuthActionConfiguration` + `ExecutableActionMixin`. Single field: `token: pydantic.SecretStr` (password widget). Executes `GET /users/me`; stores the VRM user id in state for reuse.
+`AuthActionConfiguration` + `ExecutableActionMixin`. Single field: `token: pydantic.SecretStr` (password widget). Executes `GET /users/me` to validate the token and returns the account's installations (id, name, last-data time) so users can copy installation ids from the Test Connection result. The user id is not persisted — each pull re-resolves it with one cheap call, avoiding stale identity if the token is swapped.
 
 ### `pull_observations` (Phase 1)
 `PullActionConfiguration`, `@crontab_schedule` every **10 minutes**. Per run:

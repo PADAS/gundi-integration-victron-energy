@@ -157,10 +157,12 @@ async def action_pull_observations(integration, action_config: PullObservationsC
     max_age_seconds = action_config.max_data_age_hours * 3600
     now = datetime.datetime.now(datetime.timezone.utc).timestamp()
 
-    user = await client.get_current_user(token)
     sites_by_id = {}
-    async for attempt in stamina.retry_context(on=httpx.HTTPError, attempts=3):
+    async for attempt in stamina.retry_context(
+        on=httpx.HTTPError, attempts=3, wait_initial=2.0, wait_max=30.0
+    ):
         with attempt:
+            user = await client.get_current_user(token)
             sites_by_id = {
                 s["idSite"]: s
                 for s in await client.get_installations(token, user["id"])
@@ -186,19 +188,25 @@ async def action_pull_observations(integration, action_config: PullObservationsC
         site_key = str(id_site)
         if site_key in excluded:
             continue
-        if now - site.get("last_timestamp", 0) > max_age_seconds:
+        last_timestamp = site.get("last_timestamp")
+        if not last_timestamp or now - last_timestamp > max_age_seconds:
             skipped.append(id_site)
+            last_seen = (
+                f"since {datetime.datetime.fromtimestamp(last_timestamp, tz=datetime.timezone.utc).isoformat()}"
+                if last_timestamp else "ever"
+            )
             await warn_throttled(
                 integration_id,
                 f"stale.{id_site}",
                 f"Installation {id_site} ({site.get('name')}) has not reported "
-                f"since {datetime.datetime.fromtimestamp(site.get('last_timestamp', 0), tz=datetime.timezone.utc).isoformat()}. "
-                f"Skipping until data resumes.",
+                f"data {last_seen}. Skipping until data resumes.",
             )
             continue
         try:
             diagnostics = []
-            async for attempt in stamina.retry_context(on=httpx.HTTPError, attempts=3):
+            async for attempt in stamina.retry_context(
+                on=httpx.HTTPError, attempts=3, wait_initial=2.0, wait_max=30.0
+            ):
                 with attempt:
                     diagnostics = await client.get_diagnostics(token, id_site)
         except client.VRMUnauthorizedException:
@@ -221,11 +229,12 @@ async def action_pull_observations(integration, action_config: PullObservationsC
         )
 
     if observations:
-        async for attempt in stamina.retry_context(on=httpx.HTTPError, attempts=3):
-            with attempt:
-                await send_observations_to_gundi(
-                    observations=observations, integration_id=integration_id
-                )
+        # No retry wrapper here: send_observations_to_gundi retries internally,
+        # and re-sending a batch whose POST succeeded but whose response was
+        # lost would deliver duplicate observations.
+        await send_observations_to_gundi(
+            observations=observations, integration_id=integration_id
+        )
 
     result = {
         "observations_extracted": len(observations),
