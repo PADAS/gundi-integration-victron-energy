@@ -37,8 +37,13 @@ class SensorCode(str, Enum):
     SYSTEM_CURRENT = "bc"            # Current
     SYSTEM_BATTERY_SOC = "bs"        # Battery SOC
     SYSTEM_BATTERY_POWER = "bp"      # Battery Power
+    SYSTEM_BATTERY_STATE = "bst"     # Battery state (charging/discharging/idle)
     PV_DC_COUPLED = "Pdc"            # PV - DC-coupled
     DC_SYSTEM = "dc"                 # DC System
+    # AC loads (sites with an inverter; absent on DC-only systems)
+    AC_CONSUMPTION_L1 = "a1"         # AC Consumption L1
+    AC_CONSUMPTION_L2 = "a2"         # AC Consumption L2
+    AC_CONSUMPTION_L3 = "a3"         # AC Consumption L3
 
 
 # Human labels shown next to each checkbox in the portal, emitted as
@@ -64,8 +69,12 @@ SENSOR_LABELS = {
     SensorCode.SYSTEM_CURRENT: "Current (bc) — System overview fallback",
     SensorCode.SYSTEM_BATTERY_SOC: "Battery SOC (bs) — System overview fallback",
     SensorCode.SYSTEM_BATTERY_POWER: "Battery power (bp) — System overview fallback",
+    SensorCode.SYSTEM_BATTERY_STATE: "Battery state (bst) — charging/discharging",
     SensorCode.PV_DC_COUPLED: "PV - DC-coupled (Pdc)",
     SensorCode.DC_SYSTEM: "DC System (dc)",
+    SensorCode.AC_CONSUMPTION_L1: "AC Consumption L1 (a1) — AC loads",
+    SensorCode.AC_CONSUMPTION_L2: "AC Consumption L2 (a2) — 3-phase sites",
+    SensorCode.AC_CONSUMPTION_L3: "AC Consumption L3 (a3) — 3-phase sites",
 }
 
 DEFAULT_SENSORS_OF_INTEREST = [
@@ -84,8 +93,11 @@ DEFAULT_SENSORS_OF_INTEREST = [
     SensorCode.SYSTEM_VOLTAGE,
     SensorCode.SYSTEM_CURRENT,
     SensorCode.SYSTEM_BATTERY_SOC,
+    SensorCode.SYSTEM_BATTERY_POWER,
+    SensorCode.SYSTEM_BATTERY_STATE,
     SensorCode.PV_DC_COUPLED,
     SensorCode.DC_SYSTEM,
+    SensorCode.AC_CONSUMPTION_L1,
 ]
 
 
