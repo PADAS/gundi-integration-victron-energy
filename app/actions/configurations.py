@@ -77,6 +77,9 @@ SENSOR_LABELS = {
     SensorCode.AC_CONSUMPTION_L3: "AC Consumption L3 (a3) — 3-phase sites",
 }
 
+# A SensorCode without a label would silently vanish from the portal checkbox list.
+assert set(SENSOR_LABELS) == set(SensorCode), "every SensorCode needs a SENSOR_LABELS entry"
+
 DEFAULT_SENSORS_OF_INTEREST = [
     SensorCode.VOLTAGE,
     SensorCode.BATTERY_TEMPERATURE,
