@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import httpx
@@ -23,6 +24,16 @@ class VRMUnauthorizedException(VRMClientException):
     """Raised on 401/403 — the access token is invalid or was revoked."""
     def __init__(self, message: str, status_code=401):
         super().__init__(message, status_code=status_code)
+
+
+class VRMTransientError(VRMClientException):
+    """Raised on 429/5xx — safe to retry. Other 4xx (e.g. a 404 for a deleted
+    site) raise httpx.HTTPStatusError and are not retried."""
+
+
+# A 429's Retry-After is honored up to this bound, so a misbehaving header
+# can't stall a run; the retry loop's own backoff still applies on top.
+MAX_RETRY_AFTER_SECONDS = 60
 
 
 def get_auth_config(integration) -> AuthenticateConfig:
@@ -56,6 +67,19 @@ async def _vrm_get(session: httpx.AsyncClient, path: str, params: dict = None) -
             "VRM API rejected the access token. Generate a new token in the "
             "VRM portal (Preferences > Integrations > Access tokens) and update "
             "the Authentication settings in the portal.",
+            status_code=response.status_code,
+        )
+    if response.status_code == 429:
+        try:
+            retry_after = float(response.headers.get("Retry-After") or 0)
+        except ValueError:
+            retry_after = 0
+        if retry_after > 0:
+            await asyncio.sleep(min(retry_after, MAX_RETRY_AFTER_SECONDS))
+        raise VRMTransientError("VRM rate limit exceeded", status_code=429)
+    if response.status_code >= 500:
+        raise VRMTransientError(
+            f"VRM server error: {response.status_code}",
             status_code=response.status_code,
         )
     response.raise_for_status()

@@ -297,8 +297,8 @@ async def test_pull_observations_continues_after_site_failure(
         {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 300)},
         {"idSite": 100002, "name": "Hilltop Repeater", "last_timestamp": int(NOW - 300)},
     ])
-    respx.get(f"{VRM}/installations/100001/diagnostics").mock(
-        return_value=Response(500, json={"success": False})
+    broken_site = respx.get(f"{VRM}/installations/100001/diagnostics").mock(
+        return_value=Response(404, json={"success": False})
     )
     respx.get(f"{VRM}/installations/100002/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
@@ -310,6 +310,8 @@ async def test_pull_observations_continues_after_site_failure(
 
     assert result["observations_extracted"] == 1
     assert result["installations_failed"][0]["installation_id"] == 100001
+    # Non-transient 4xx must fail the site immediately, not burn retries
+    assert broken_site.call_count == 1
     observations = mock_send.call_args.kwargs["observations"]
     assert observations[0]["source"] == "100002"
 

@@ -172,8 +172,11 @@ async def action_pull_observations(integration, action_config: PullObservationsC
     failed = []
     async with client.vrm_session(token) as session:
         sites_by_id = {}
+        # Retry transport errors and 429/5xx only — a non-transient 4xx
+        # (raised as httpx.HTTPStatusError) fails immediately.
         async for attempt in stamina.retry_context(
-            on=httpx.HTTPError, attempts=3, wait_initial=2.0, wait_max=30.0
+            on=(httpx.TransportError, client.VRMTransientError),
+            attempts=3, wait_initial=2.0, wait_max=30.0,
         ):
             with attempt:
                 user = await client.get_current_user(session)
@@ -216,13 +219,14 @@ async def action_pull_observations(integration, action_config: PullObservationsC
             try:
                 diagnostics = []
                 async for attempt in stamina.retry_context(
-                    on=httpx.HTTPError, attempts=3, wait_initial=2.0, wait_max=30.0
+                    on=(httpx.TransportError, client.VRMTransientError),
+                    attempts=3, wait_initial=2.0, wait_max=30.0,
                 ):
                     with attempt:
                         diagnostics = await client.get_diagnostics(session, id_site)
             except client.VRMUnauthorizedException:
                 raise
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, client.VRMTransientError) as e:
                 logger.exception(f"Failed to fetch diagnostics for installation {id_site}")
                 failed.append({"installation_id": id_site, "error": str(e)})
                 continue
