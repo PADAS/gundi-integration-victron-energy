@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Print sensors of interest (latest readings) for VRM installations.
 
-Demonstrates the attribute-whitelist strategy for the Victron Energy connector
-(see docs/DESIGN.md):
+Demonstrates the attribute-whitelist strategy for the Victron Energy connector:
 - field name  = record["description"]  (API-provided human name)
 - field value = record["formattedValue"] (API-provided value with unit)
 - selection   = (Device, code) whitelist

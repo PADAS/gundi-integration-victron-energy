@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Proof of concept: pull latest VRM readings and push them to Gundi as observations.
 
-Pipeline (mirrors the future pull_observations action, see docs/DESIGN.md):
+Pipeline (mirrors the pull_observations action):
   VRM diagnostics -> sensors-of-interest whitelist -> Gundi v2 observation schema
   -> POST {GUNDI_SENSORS_URL}/v2/observations (apikey header)
 
