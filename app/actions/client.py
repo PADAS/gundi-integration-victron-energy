@@ -38,11 +38,19 @@ def get_auth_config(integration) -> AuthenticateConfig:
     return AuthenticateConfig.parse_obj(auth_config.data)
 
 
-async def _vrm_get(path: str, token: str, params: dict = None) -> dict:
-    url = f"{VRM_API_BASE_URL}{path}"
-    headers = {"x-authorization": f"Token {token}"}
-    async with httpx.AsyncClient(timeout=60) as session:
-        response = await session.get(url, headers=headers, params=params)
+def vrm_session(token: str) -> httpx.AsyncClient:
+    """One client (connection pool) per action run — VRM calls fan out to
+    1-2 requests per installation, so per-request clients would redo the
+    TCP+TLS handshake dozens of times per pull."""
+    return httpx.AsyncClient(
+        base_url=VRM_API_BASE_URL,
+        headers={"x-authorization": f"Token {token}"},
+        timeout=60,
+    )
+
+
+async def _vrm_get(session: httpx.AsyncClient, path: str, params: dict = None) -> dict:
+    response = await session.get(path, params=params)
     if response.status_code in (401, 403):
         raise VRMUnauthorizedException(
             "VRM API rejected the access token. Generate a new token in the "
@@ -54,23 +62,23 @@ async def _vrm_get(path: str, token: str, params: dict = None) -> dict:
     return response.json()
 
 
-async def get_current_user(token: str) -> dict:
+async def get_current_user(session: httpx.AsyncClient) -> dict:
     """Validate the token and return the VRM user (id, name, email, country)."""
-    data = await _vrm_get("/users/me", token)
+    data = await _vrm_get(session, "/users/me")
     return data["user"]
 
 
-async def get_installations(token: str, user_id: int) -> list:
+async def get_installations(session: httpx.AsyncClient, user_id: int) -> list:
     """All installations visible to the account, with extended attributes."""
     data = await _vrm_get(
-        f"/users/{user_id}/installations", token, params={"extended": 1}
+        session, f"/users/{user_id}/installations", params={"extended": 1}
     )
     return data.get("records", [])
 
 
-async def get_diagnostics(token: str, id_site: int, count: int = 1000) -> list:
+async def get_diagnostics(session: httpx.AsyncClient, id_site: int, count: int = 1000) -> list:
     """Latest value of every data attribute for an installation."""
     data = await _vrm_get(
-        f"/installations/{id_site}/diagnostics", token, params={"count": count}
+        session, f"/installations/{id_site}/diagnostics", params={"count": count}
     )
     return data.get("records", [])

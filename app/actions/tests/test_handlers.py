@@ -36,7 +36,7 @@ def diag_record(code, description, value, device="Battery Monitor", ts=None):
 @pytest.fixture
 def override():
     return LocationOverride(
-        installation_id="505735", latitude="-13.104724", longitude="31.784705"
+        installation_id="100001", latitude="-12.345678", longitude="34.567890"
     )
 
 
@@ -59,8 +59,9 @@ def patch_pull_dependencies(mocker):
         handlers.client, "get_auth_config",
         return_value=AuthenticateConfig(token="test-token"),
     )
-    mocker.patch.object(handlers.state_manager, "get_state", AsyncMock(return_value=None))
-    mocker.patch.object(handlers.state_manager, "set_state", AsyncMock())
+    mocker.patch.object(
+        handlers.state_manager, "set_if_absent", AsyncMock(return_value=True)
+    )
     mock_log_activity = mocker.patch.object(handlers, "log_action_activity", AsyncMock())
     mock_send = mocker.patch.object(handlers, "send_observations_to_gundi", AsyncMock())
     return mock_send, mock_log_activity
@@ -129,14 +130,14 @@ class TestBuildReadings:
 async def test_action_auth_success(mocker, mock_integration):
     mocker.patch("app.services.activity_logger.publish_event", AsyncMock())
     mock_vrm_account([
-        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
+        {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 300)},
     ])
     result = await action_auth(mock_integration, AuthenticateConfig(token="good"))
     assert result["valid_credentials"] is True
     assert result["user_id"] == 66846
     assert result["installations_found"] == 1
-    assert result["installations"][0]["installation_id"] == 505735
-    assert result["installations"][0]["name"] == "Robin Pope"
+    assert result["installations"][0]["installation_id"] == 100001
+    assert result["installations"][0]["name"] == "Baobab Camp"
 
 
 @pytest.mark.asyncio
@@ -157,9 +158,9 @@ async def test_pull_observations_happy_path(
 ):
     mock_send, _ = patch_pull_dependencies
     mock_vrm_account([
-        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
+        {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 300)},
     ])
-    respx.get(f"{VRM}/installations/505735/diagnostics").mock(
+    respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
             diag_record("V", "Voltage", "53.26 V"),
             diag_record("SOC", "State of charge", "95.0 %"),
@@ -173,11 +174,11 @@ async def test_pull_observations_happy_path(
     assert result["installations_skipped"] == 0
     observations = mock_send.call_args.kwargs["observations"]
     obs = observations[0]
-    assert obs["source"] == "505735"
-    assert obs["source_name"] == "Robin Pope"
+    assert obs["source"] == "100001"
+    assert obs["source_name"] == "Baobab Camp"
     assert obs["type"] == "stationary-object"
     assert obs["subject_type"] == "static-sensor"
-    assert obs["location"] == {"lat": -13.104724, "lon": 31.784705}
+    assert obs["location"] == {"lat": -12.345678, "lon": 34.567890}
     assert obs["additional"] == {"Voltage": "53.26 V", "State of charge": "95.0 %"}
 
 
@@ -206,9 +207,9 @@ async def test_pull_observations_auto_discovers_without_config(
     mock_send, _ = patch_pull_dependencies
     config = PullObservationsConfig()  # zero installation setup
     mock_vrm_account([
-        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
+        {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 300)},
     ])
-    respx.get(f"{VRM}/installations/505735/diagnostics").mock(
+    respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
             diag_record("V", "Voltage", "53.26 V"),
         ]})
@@ -218,7 +219,7 @@ async def test_pull_observations_auto_discovers_without_config(
 
     assert result["observations_extracted"] == 1
     obs = mock_send.call_args.kwargs["observations"][0]
-    assert obs["source"] == "505735"
+    assert obs["source"] == "100001"
     assert obs["location"] == {"lat": 0.0, "lon": 0.0}
 
 
@@ -228,12 +229,12 @@ async def test_pull_observations_excludes_installations(
     mock_integration, patch_pull_dependencies
 ):
     mock_send, _ = patch_pull_dependencies
-    config = PullObservationsConfig(excluded_installations=["332245"])
+    config = PullObservationsConfig(excluded_installations=["100002"])
     mock_vrm_account([
-        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
-        {"idSite": 332245, "name": "Solio Repeater", "last_timestamp": int(NOW - 300)},
+        {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 300)},
+        {"idSite": 100002, "name": "Hilltop Repeater", "last_timestamp": int(NOW - 300)},
     ])
-    respx.get(f"{VRM}/installations/505735/diagnostics").mock(
+    respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
             diag_record("V", "Voltage", "53.26 V"),
         ]})
@@ -244,7 +245,7 @@ async def test_pull_observations_excludes_installations(
     assert result["observations_extracted"] == 1
     assert result["installations_excluded"] == 1
     sources = [o["source"] for o in mock_send.call_args.kwargs["observations"]]
-    assert sources == ["505735"]
+    assert sources == ["100001"]
 
 
 @pytest.mark.asyncio
@@ -254,7 +255,7 @@ async def test_pull_observations_skips_stale_site(
 ):
     mock_send, mock_log_activity = patch_pull_dependencies
     mock_vrm_account([
-        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 3 * 24 * 3600)},
+        {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 3 * 24 * 3600)},
     ])
 
     result = await action_pull_observations(mock_integration, pull_config)
@@ -272,7 +273,7 @@ async def test_pull_observations_skips_site_that_never_reported(
 ):
     mock_send, mock_log_activity = patch_pull_dependencies
     mock_vrm_account([
-        {"idSite": 505735, "name": "Robin Pope"},  # no last_timestamp at all
+        {"idSite": 100001, "name": "Baobab Camp"},  # no last_timestamp at all
     ])
 
     result = await action_pull_observations(mock_integration, PullObservationsConfig())
@@ -293,13 +294,13 @@ async def test_pull_observations_continues_after_site_failure(
     mock_send, _ = patch_pull_dependencies
     config = PullObservationsConfig()
     mock_vrm_account([
-        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
-        {"idSite": 332245, "name": "Solio Repeater", "last_timestamp": int(NOW - 300)},
+        {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 300)},
+        {"idSite": 100002, "name": "Hilltop Repeater", "last_timestamp": int(NOW - 300)},
     ])
-    respx.get(f"{VRM}/installations/505735/diagnostics").mock(
+    respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(500, json={"success": False})
     )
-    respx.get(f"{VRM}/installations/332245/diagnostics").mock(
+    respx.get(f"{VRM}/installations/100002/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
             diag_record("V", "Voltage", "26.56 V"),
         ]})
@@ -308,9 +309,9 @@ async def test_pull_observations_continues_after_site_failure(
     result = await action_pull_observations(mock_integration, config)
 
     assert result["observations_extracted"] == 1
-    assert result["installations_failed"][0]["installation_id"] == 505735
+    assert result["installations_failed"][0]["installation_id"] == 100001
     observations = mock_send.call_args.kwargs["observations"]
-    assert observations[0]["source"] == "332245"
+    assert observations[0]["source"] == "100002"
 
 
 @pytest.mark.asyncio
@@ -321,15 +322,55 @@ async def test_pull_observations_warning_throttled(
     mock_send, mock_log_activity = patch_pull_dependencies
     # State says we already warned about this override recently
     mocker.patch.object(
-        handlers.state_manager, "get_state",
-        AsyncMock(return_value={"warned_at": NOW - 60}),
+        handlers.state_manager, "set_if_absent", AsyncMock(return_value=False)
     )
-    mock_vrm_account([])  # override 505735 matches no visible site
+    mock_vrm_account([])  # override 100001 matches no visible site
 
     result = await action_pull_observations(mock_integration, pull_config)
 
     assert result["installations_found"] == 0
     mock_log_activity.assert_not_awaited()  # throttled, not re-logged
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_pull_observations_warns_when_throttle_state_unavailable(
+    mocker, mock_integration, pull_config, patch_pull_dependencies
+):
+    # The throttle is best-effort: if Redis is down, the warning is published
+    # and the pull run continues instead of failing.
+    mock_send, mock_log_activity = patch_pull_dependencies
+    mocker.patch.object(
+        handlers.state_manager, "set_if_absent",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    )
+    mock_vrm_account([])  # override 100001 matches no visible site
+
+    result = await action_pull_observations(mock_integration, pull_config)
+
+    assert result["installations_found"] == 0
+    mock_log_activity.assert_awaited_once()  # fail-open: warning still published
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_pull_observations_unauthorized_mid_pull_fails_run(
+    mock_integration, patch_pull_dependencies
+):
+    # A revoked token mid-pull must fail the whole run (so the portal surfaces
+    # the auth error), not be swallowed like a per-site fetch failure.
+    mock_send, _ = patch_pull_dependencies
+    mock_vrm_account([
+        {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 300)},
+    ])
+    respx.get(f"{VRM}/installations/100001/diagnostics").mock(
+        return_value=Response(401, json={"success": False, "errors": "Unauthorized"})
+    )
+
+    with pytest.raises(handlers.client.VRMUnauthorizedException):
+        await action_pull_observations(mock_integration, PullObservationsConfig())
+
+    mock_send.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -343,9 +384,9 @@ async def test_pull_observations_additional_sensor_codes(
         additional_sensor_codes=["gs"],
     )
     mock_vrm_account([
-        {"idSite": 505735, "name": "Robin Pope", "last_timestamp": int(NOW - 300)},
+        {"idSite": 100001, "name": "Baobab Camp", "last_timestamp": int(NOW - 300)},
     ])
-    respx.get(f"{VRM}/installations/505735/diagnostics").mock(
+    respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
             diag_record("V", "Voltage", "53.26 V"),
             diag_record("gs", "Genset state", "Stopped", device="Gateway"),

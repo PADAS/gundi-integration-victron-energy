@@ -1,2 +1,2 @@
 # Add your integration-specific dependencies here
-respx~=0.21.1  # HTTP mocking in tests
+respx~=0.20.2  # HTTP mocking in tests (0.21.x needs httpx>=0.25; lock pins httpx 0.24.1)

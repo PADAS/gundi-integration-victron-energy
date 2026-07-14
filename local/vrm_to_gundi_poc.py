@@ -27,13 +27,13 @@ GUNDI_API_KEY = os.environ.get("GUNDI_API_KEY")
 # --- PoC stand-in for the action config -------------------------------------
 # Sites not visible to the current VRM_TOKEN's account are skipped, so this can
 # hold installations from several accounts; run the script once per token.
+# FICTIONAL placeholder values — replace with your own installation ids and
+# coordinates before running (never commit real site data).
 INSTALLATIONS = {
     # idSite: (latitude, longitude, optional subject name override)
-    505735: (-13.104724, 31.784705, None),  # Robin Pope, South Luangwa, Zambia (CSL account)
-    # Ol Pejeta account — PLACEHOLDER coords (approximate area), fix with real ones
-    332245: (-0.365000, 36.876000, "Solio Repeater (PoC)"),
-    341768: (-0.395000, 36.892000, "Solio Ranch HQ Solar (PoC)"),
-    358793: (0.075000, 36.950000, "Mutara Gate (PoC)"),
+    100001: (-12.345678, 34.567890, None),
+    100002: (-12.350000, 34.570000, "Hilltop Repeater (PoC)"),
+    100003: (-12.355000, 34.575000, "HQ Solar (PoC)"),
 }
 SUBJECT_SUBTYPE = "stationary-object"
 SENSORS_OF_INTEREST = {

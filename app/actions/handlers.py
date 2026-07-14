@@ -96,9 +96,19 @@ def build_observation(site, override, readings: dict, newest_ts: int, subject_su
 
 async def warn_throttled(integration_id: str, key: str, title: str, data: dict = None):
     """Emit a portal WARNING at most once per day per key."""
-    state = await state_manager.get_state(integration_id, "pull_observations", f"warn.{key}")
-    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
-    if state and now - state.get("warned_at", 0) < WARNING_THROTTLE_SECONDS:
+    try:
+        first_in_window = await state_manager.set_if_absent(
+            integration_id=integration_id,
+            action_id="pull_observations",
+            source_id=f"warn.{key}",
+            ttl_seconds=WARNING_THROTTLE_SECONDS,
+        )
+    except Exception as throttle_error:
+        # The throttle is best-effort noise control: if the state store is
+        # unavailable, publish the warning rather than failing the pull run.
+        logger.warning(f"Warning throttle unavailable ({throttle_error}). Publishing the warning.")
+        first_in_window = True
+    if not first_in_window:
         logger.warning(f"{title} (portal warning throttled)")
         return
     await log_action_activity(
@@ -108,22 +118,22 @@ async def warn_throttled(integration_id: str, key: str, title: str, data: dict =
         title=title,
         data=data or {},
     )
-    await state_manager.set_state(
-        integration_id, "pull_observations", {"warned_at": now}, f"warn.{key}"
-    )
 
 
 @activity_logger()
 async def action_auth(integration, action_config: AuthenticateConfig):
-    logger.info(f"Executing auth action with integration {integration}...")
+    # Log the id only: the integration object carries the auth config,
+    # including the VRM access token in plaintext.
+    logger.info(f"Executing auth action for integration {integration.id}...")
     token = action_config.token.get_secret_value()
-    try:
-        user = await client.get_current_user(token)
-    except client.VRMUnauthorizedException:
-        return {"valid_credentials": False}
-    # List the visible installations so the user can copy the IDs straight
-    # from the Test Connection result when filling the pull_observations form.
-    installations = await client.get_installations(token, user["id"])
+    async with client.vrm_session(token) as session:
+        try:
+            user = await client.get_current_user(session)
+        except client.VRMUnauthorizedException:
+            return {"valid_credentials": False}
+        # List the visible installations so the user can copy the IDs straight
+        # from the Test Connection result when filling the pull_observations form.
+        installations = await client.get_installations(session, user["id"])
     return {
         "valid_credentials": True,
         "user_id": user.get("id"),
@@ -146,7 +156,7 @@ async def action_auth(integration, action_config: AuthenticateConfig):
 @activity_logger()
 async def action_pull_observations(integration, action_config: PullObservationsConfig):
     logger.info(
-        f"Executing pull_observations action with integration {integration}..."
+        f"Executing pull_observations action for integration {integration.id}..."
     )
     integration_id = str(integration.id)
     auth_config = client.get_auth_config(integration)
@@ -157,76 +167,77 @@ async def action_pull_observations(integration, action_config: PullObservationsC
     max_age_seconds = action_config.max_data_age_hours * 3600
     now = datetime.datetime.now(datetime.timezone.utc).timestamp()
 
-    sites_by_id = {}
-    async for attempt in stamina.retry_context(
-        on=httpx.HTTPError, attempts=3, wait_initial=2.0, wait_max=30.0
-    ):
-        with attempt:
-            user = await client.get_current_user(token)
-            sites_by_id = {
-                s["idSite"]: s
-                for s in await client.get_installations(token, user["id"])
-            }
-
-    # Config ids arrive as strings from the portal form; VRM idSite is an int.
-    # Normalize on strings for all comparisons.
-    overrides_by_id = {str(o.installation_id): o for o in action_config.location_overrides}
-    excluded = {str(i) for i in action_config.excluded_installations}
-    site_ids = {str(id_site) for id_site in sites_by_id}
-    for id_site in overrides_by_id.keys() - site_ids:
-        await warn_throttled(
-            integration_id,
-            f"invisible.{id_site}",
-            f"Location override for installation {id_site} matches no installation "
-            f"visible to this VRM account. Check the installation ID.",
-        )
-
     observations = []
     skipped = []
     failed = []
-    for id_site, site in sites_by_id.items():
-        site_key = str(id_site)
-        if site_key in excluded:
-            continue
-        last_timestamp = site.get("last_timestamp")
-        if not last_timestamp or now - last_timestamp > max_age_seconds:
-            skipped.append(id_site)
-            last_seen = (
-                f"since {datetime.datetime.fromtimestamp(last_timestamp, tz=datetime.timezone.utc).isoformat()}"
-                if last_timestamp else "ever"
-            )
+    async with client.vrm_session(token) as session:
+        sites_by_id = {}
+        async for attempt in stamina.retry_context(
+            on=httpx.HTTPError, attempts=3, wait_initial=2.0, wait_max=30.0
+        ):
+            with attempt:
+                user = await client.get_current_user(session)
+                sites_by_id = {
+                    s["idSite"]: s
+                    for s in await client.get_installations(session, user["id"])
+                }
+
+        # Config ids arrive as strings from the portal form; VRM idSite is an int.
+        # Normalize on strings for all comparisons.
+        overrides_by_id = {str(o.installation_id): o for o in action_config.location_overrides}
+        excluded = {str(i) for i in action_config.excluded_installations}
+        site_ids = {str(id_site) for id_site in sites_by_id}
+        for id_site in overrides_by_id.keys() - site_ids:
             await warn_throttled(
                 integration_id,
-                f"stale.{id_site}",
-                f"Installation {id_site} ({site.get('name')}) has not reported "
-                f"data {last_seen}. Skipping until data resumes.",
+                f"invisible.{id_site}",
+                f"Location override for installation {id_site} matches no installation "
+                f"visible to this VRM account. Check the installation ID.",
             )
-            continue
-        try:
-            diagnostics = []
-            async for attempt in stamina.retry_context(
-                on=httpx.HTTPError, attempts=3, wait_initial=2.0, wait_max=30.0
-            ):
-                with attempt:
-                    diagnostics = await client.get_diagnostics(token, id_site)
-        except client.VRMUnauthorizedException:
-            raise
-        except httpx.HTTPError as e:
-            logger.exception(f"Failed to fetch diagnostics for installation {id_site}")
-            failed.append({"installation_id": id_site, "error": str(e)})
-            continue
 
-        readings, newest_ts = build_readings(diagnostics, sensor_codes)
-        if not readings:
-            skipped.append(id_site)
-            logger.info(f"Installation {id_site}: no matching fresh readings, skipping.")
-            continue
-        observations.append(
-            build_observation(
-                site, overrides_by_id.get(site_key), readings, newest_ts,
-                action_config.subject_subtype,
+        for id_site, site in sites_by_id.items():
+            site_key = str(id_site)
+            if site_key in excluded:
+                continue
+            last_timestamp = site.get("last_timestamp")
+            if not last_timestamp or now - last_timestamp > max_age_seconds:
+                skipped.append(id_site)
+                last_seen = (
+                    f"since {datetime.datetime.fromtimestamp(last_timestamp, tz=datetime.timezone.utc).isoformat()}"
+                    if last_timestamp else "ever"
+                )
+                await warn_throttled(
+                    integration_id,
+                    f"stale.{id_site}",
+                    f"Installation {id_site} ({site.get('name')}) has not reported "
+                    f"data {last_seen}. Skipping until data resumes.",
+                )
+                continue
+            try:
+                diagnostics = []
+                async for attempt in stamina.retry_context(
+                    on=httpx.HTTPError, attempts=3, wait_initial=2.0, wait_max=30.0
+                ):
+                    with attempt:
+                        diagnostics = await client.get_diagnostics(session, id_site)
+            except client.VRMUnauthorizedException:
+                raise
+            except httpx.HTTPError as e:
+                logger.exception(f"Failed to fetch diagnostics for installation {id_site}")
+                failed.append({"installation_id": id_site, "error": str(e)})
+                continue
+
+            readings, newest_ts = build_readings(diagnostics, sensor_codes)
+            if not readings:
+                skipped.append(id_site)
+                logger.info(f"Installation {id_site}: no matching fresh readings, skipping.")
+                continue
+            observations.append(
+                build_observation(
+                    site, overrides_by_id.get(site_key), readings, newest_ts,
+                    action_config.subject_subtype,
+                )
             )
-        )
 
     if observations:
         # No retry wrapper here: send_observations_to_gundi retries internally,

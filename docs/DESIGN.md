@@ -49,12 +49,12 @@ The original prototype filtered alarm attributes out of `/diagnostics`. That is 
 `PullActionConfiguration`, `@crontab_schedule` every **10 minutes**. Per run:
 
 1. `GET /users/{id}/installations?extended=1` — resolve site names, check freshness.
-2. For each configured installation: `GET /installations/{id}/diagnostics` → filter by the sensors-of-interest whitelist → build **one observation**: configured lat/lon, `recorded_at` = newest record timestamp, `additional` = `{description: formattedValue}`.
+2. For each auto-discovered installation (minus exclusions): `GET /installations/{id}/diagnostics` → filter by the sensors-of-interest whitelist → build **one observation**: configured lat/lon, `recorded_at` = newest record timestamp, `additional` = `{description: formattedValue}`.
 3. `send_observations_to_gundi(...)`; return counts.
 
-Requests are throttled/retried (`stamina` on 429/5xx honoring `Retry-After`) to respect the shared rate window — Ol Pejeta alone has 37 installations.
+Requests are throttled/retried (`stamina` on 429/5xx honoring `Retry-After`) to respect the shared rate window — a single first-customer account has 37 installations.
 
-**Observation schema** follows the convention used by the OpenWeather and ZentraCloud connectors: `type: "stationary-object"` + `subtype` (default **`sensor`**, user-configurable — ER sites map icons per subtype). `source` = the VRM **`idSite`**, not the GX device `identifier` — the identifier is a hardware serial that changes when a gateway is replaced (observed at a real site), which would orphan the ER subject and its history.
+**Observation schema** follows the convention used by the OpenWeather and ZentraCloud connectors: `type: "stationary-object"` + `subject_type` (default **`static-sensor`**, user-configurable — ER sites map icons per subtype). `source` = the VRM **`idSite`**, not the GX device `identifier` — the identifier is a hardware serial that changes when a gateway is replaced (observed at a real site), which would orphan the ER subject and its history.
 
 **Partial-failure semantics:** one broken installation must not blind the healthy ones. Per-site failures are caught, the run continues, and failures are reported in the run summary and as throttled warnings.
 
@@ -69,19 +69,24 @@ Requests are throttled/retried (`stamina` on 429/5xx honoring `Retry-After`) to 
 
 ## Configuration
 
-```python
-class InstallationConfig(pydantic.BaseModel):
-    installation_id: int          # visible in the VRM dashboard URL
-    latitude: float               # ER subject location (VRM has no coordinates)
-    longitude: float
-    subject_name: Optional[str]   # defaults to the VRM site name
+As implemented (the original design required a per-installation list; the shipped
+version auto-discovers every installation visible to the token, with optional
+overrides — see `app/actions/configurations.py` for the authoritative model):
 
-class PullObservationsConfig(PullActionConfiguration):   # Phase 1
-    installations: List[InstallationConfig]
-    subject_subtype: str = "sensor"          # user-configurable, ER maps icon
+```python
+class LocationOverride(pydantic.BaseModel):
+    installation_id: str          # visible in the VRM dashboard URL
+    latitude: str                 # ER subject location (VRM has no coordinates)
+    longitude: str                # str-typed: the portal form doesn't coerce
+    subject_name: Optional[str]   # numbers nested in array items
+
+class PullObservationsConfig(PullActionConfiguration, ExecutableActionMixin):   # Phase 1
+    subject_subtype: str = "static-sensor"   # user-configurable, ER maps icon
     sensors_of_interest: List[SensorCode] = [...]   # curated enum, default whitelist below
     additional_sensor_codes: List[str] = []  # free-text escape hatch for uncurated codes
     max_data_age_hours: int = 24             # site-level staleness cutoff (see Edge cases)
+    location_overrides: List[LocationOverride] = []  # unlisted sites land at 0,0
+    excluded_installations: List[str] = []   # opt-out list
 
 class PullEventsConfig(PullActionConfiguration):         # Phase 2
     alarm_lookback_days: int = 7             # first-run alarm-log window
@@ -91,7 +96,9 @@ class PullEventsConfig(PullActionConfiguration):         # Phase 2
 
 EarthRanger credentials/base_url are **never** stored here — they live on the destination integration and are resolved at runtime.
 
-Portal form mock:
+Portal form mock (predates auto-discovery — shows the original per-installation
+table where the shipped form has optional location overrides/exclusions; values
+are fictional):
 
 ![Config form mock](images/config-form-mock.svg)
 
@@ -132,7 +139,7 @@ Verified against both customer accounts: attribute codes and `idDataAttribute` a
 - The demo site's ER popup (8 fields) was reproduced exactly by the whitelist strategy.
 - A real active alarm was read from the alarm-log (`Solar Charger — Error code — #38 PV Input shutdown`, started 2025-12-30, still active).
 - Reproduce with [`local/vrm_readings.py`](../local/vrm_readings.py): `VRM_TOKEN=<token> python3 local/vrm_readings.py [idSite ...]`
-- **End-to-end PoC (2026-07-06):** [`local/vrm_to_gundi_poc.py`](../local/vrm_to_gundi_poc.py) pulls VRM diagnostics, shapes standard Gundi v2 observations, and POSTs them to the stage sensors API (`/v2/observations/` — trailing slash required, the redirect otherwise turns POST into GET). Verified with both accounts: single-site (Robin Pope, rendering correctly in stage ER at its real location with all readings) and multi-site batch (3 Ol Pejeta installations → 3 separate subjects, HTTP 200). Each installation is a separate `source` → separate ER subject.
+- **End-to-end PoC (2026-07-06):** [`local/vrm_to_gundi_poc.py`](../local/vrm_to_gundi_poc.py) pulls VRM diagnostics, shapes standard Gundi v2 observations, and POSTs them to the stage sensors API (`/v2/observations/` — trailing slash required, the redirect otherwise turns POST into GET). Verified with both first-customer accounts: single-site (rendering correctly in stage ER at its configured location with all readings) and multi-site batch (3 installations → 3 separate subjects, HTTP 200). Each installation is a separate `source` → separate ER subject.
 
 ## Open questions for the team
 

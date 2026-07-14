@@ -22,19 +22,19 @@
   <rect x="44" y="286" width="632" height="88" fill="none" stroke="#d9d7cf" rx="8"/>
   <text x="60" y="308" font-size="11" fill="#8a887f">Installation ID</text>
   <rect x="60" y="314" width="180" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
-  <text x="70" y="333" font-size="12" fill="#3d3d3a">505735</text>
+  <text x="70" y="333" font-size="12" fill="#3d3d3a">100001</text>
   <text x="262" y="308" font-size="11" fill="#8a887f">Latitude</text>
   <rect x="262" y="314" width="150" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
-  <text x="272" y="333" font-size="12" fill="#3d3d3a">-13.104724</text>
+  <text x="272" y="333" font-size="12" fill="#3d3d3a">-12.345678</text>
   <text x="434" y="308" font-size="11" fill="#8a887f">Longitude</text>
   <rect x="434" y="314" width="150" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
-  <text x="444" y="333" font-size="12" fill="#3d3d3a">31.784705</text>
+  <text x="444" y="333" font-size="12" fill="#3d3d3a">34.567890</text>
   <text x="60" y="364" font-size="11" fill="#8a887f">Subject name override (optional &#8212; defaults to VRM site name)</text>
 
   <rect x="44" y="384" width="632" height="60" fill="none" stroke="#d9d7cf" rx="8"/>
   <text x="60" y="406" font-size="11" fill="#8a887f">Installation ID</text>
   <rect x="60" y="412" width="180" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
-  <text x="70" y="431" font-size="12" fill="#3d3d3a">332245</text>
+  <text x="70" y="431" font-size="12" fill="#3d3d3a">100002</text>
   <text x="262" y="406" font-size="11" fill="#8a887f">Latitude</text>
   <rect x="262" y="412" width="150" height="28" fill="#fbfaf7" stroke="#c9c7bf" rx="6"/>
   <text x="272" y="431" font-size="12" fill="#3d3d3a">0.028408</text>
