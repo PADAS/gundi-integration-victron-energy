@@ -44,7 +44,7 @@ WARNING_THROTTLE_SECONDS = 24 * 3600
 def build_readings(diagnostics: list, sensor_codes: set) -> tuple:
     """Filter diagnostics records to the whitelisted, fresh, deduped readings.
 
-    Returns ({field name: value}, newest_timestamp); see reading_entry.
+    Returns ({description: value}, newest_timestamp); see reading_value.
     """
     candidates = [
         r for r in diagnostics
@@ -70,24 +70,19 @@ def build_readings(diagnostics: list, sensor_codes: set) -> tuple:
         name = record["description"]
         if name in readings:
             continue
-        readings[name] = record
-    return dict(reading_entry(r) for r in readings.values()), newest_ts
+        readings[name] = reading_value(record)
+    return readings, newest_ts
 
 
-def reading_entry(record: dict) -> tuple:
-    """Turn a diagnostics record into a (field name, value) pair.
-
-    Measured readings go out as numbers, with the unit from `formattedValue`
-    moved into the name ("Voltage (V)": 26.79). Status readings (records with
-    enum values, e.g. charge state) keep their text ("Charge state": "Off").
+def reading_value(record: dict):
+    """Measured readings go out as numbers ("Voltage": 26.79). Status readings
+    (records with enum values, e.g. charge state) keep their text
+    ("Charge state": "Off").
     """
-    name = record["description"]
     raw = record.get("rawValue")
-    formatted = record["formattedValue"]
-    if record.get("dataAttributeEnumValues") or isinstance(raw, bool) or not isinstance(raw, (int, float)):
-        return name, formatted
-    _, _, unit = str(formatted).partition(" ")
-    return (f"{name} ({unit})" if unit else name), raw
+    if record.get("dataAttributeEnumValues") or type(raw) not in (int, float):
+        return record["formattedValue"]
+    return raw
 
 
 def build_observation(site, override, readings: dict, newest_ts: int, subject_subtype: str) -> dict:

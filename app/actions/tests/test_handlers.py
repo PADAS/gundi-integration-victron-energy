@@ -95,7 +95,7 @@ class TestBuildReadings:
             diag_record("ip", "Local ip address", "192.168.9.24", device="Gateway"),
         ]
         readings, _ = build_readings(diagnostics, {"V"})
-        assert readings == {"Voltage (V)": 53.26}
+        assert readings == {"Voltage": 53.26}
 
     def test_prefers_battery_monitor_over_system_overview(self):
         diagnostics = [
@@ -103,7 +103,7 @@ class TestBuildReadings:
             diag_record("V", "Voltage", "53.26 V", device="Battery Monitor"),
         ]
         readings, _ = build_readings(diagnostics, {"V", "bv"})
-        assert readings == {"Voltage (V)": 53.26}
+        assert readings == {"Voltage": 53.26}
 
     def test_drops_records_far_behind_newest(self):
         old_ts = NOW - 5 * 365 * 24 * 3600
@@ -112,7 +112,7 @@ class TestBuildReadings:
             diag_record("PVP", "PV power", "294 W", device="Solar Charger", ts=old_ts),
         ]
         readings, newest_ts = build_readings(diagnostics, {"V", "PVP"})
-        assert readings == {"Voltage (V)": 26.54}
+        assert readings == {"Voltage": 26.54}
         assert newest_ts == int(NOW)
 
     def test_skips_empty_values(self):
@@ -120,13 +120,13 @@ class TestBuildReadings:
         readings, _ = build_readings(diagnostics, {"V"})
         assert readings == {}
 
-    def test_sends_measured_readings_as_numbers_with_unit_in_name(self):
+    def test_sends_measured_readings_as_numbers(self):
         diagnostics = [
             diag_record("V", "Voltage", "26.79 V", raw=26.79),
             diag_record("TTG", "Time to go", "78.02 h", raw=78.017),
         ]
         readings, _ = build_readings(diagnostics, {"V", "TTG"})
-        assert readings == {"Voltage (V)": 26.79, "Time to go (h)": 78.017}
+        assert readings == {"Voltage": 26.79, "Time to go": 78.017}
 
     def test_keeps_status_readings_as_text(self):
         diagnostics = [
@@ -146,14 +146,14 @@ class TestBuildReadings:
             diag_record("bs", "Battery SOC", "95.0 %", device="System overview"),
         ]
         readings, _ = build_readings(diagnostics, {"SOC", "bs"})
-        assert readings == {"State of charge (%)": 95}
+        assert readings == {"State of charge": 95}
 
     def test_keeps_fallback_when_battery_monitor_absent(self):
         diagnostics = [
             diag_record("bs", "Battery SOC", "95.0 %", device="System overview"),
         ]
         readings, _ = build_readings(diagnostics, {"SOC", "bs"})
-        assert readings == {"Battery SOC (%)": 95}
+        assert readings == {"Battery SOC": 95}
 
 
 @pytest.mark.asyncio
@@ -210,7 +210,7 @@ async def test_pull_observations_happy_path(
     assert obs["type"] == "stationary-object"
     assert obs["subject_type"] == "static-sensor"
     assert obs["location"] == {"lat": -12.345678, "lon": 34.567890}
-    assert obs["additional"] == {"Voltage (V)": 53.26, "State of charge (%)": 95}
+    assert obs["additional"] == {"Voltage": 53.26, "State of charge": 95}
 
 
 @pytest.mark.asyncio
