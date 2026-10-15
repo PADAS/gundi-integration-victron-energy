@@ -10,9 +10,10 @@ from .core import AuthActionConfiguration, PullActionConfiguration, ExecutableAc
 class SensorCode(str, Enum):
     """Curated VRM data-attribute codes (case-sensitive, global across accounts).
 
-    The human-readable name and unit for each reading come from the VRM API
-    itself (record `description` / `formattedValue`), so this enum only curates
-    which attributes are worth showing — it never renames them.
+    The field name for each reading comes from the VRM API itself (record
+    `description`) and the value is VRM's number (`rawValue`), without a unit,
+    so this enum only curates which attributes are worth showing — it never
+    renames them.
     """
     # Battery Monitor
     VOLTAGE = "V"                    # Voltage

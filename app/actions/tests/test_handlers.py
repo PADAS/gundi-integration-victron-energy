@@ -20,13 +20,16 @@ from app.actions.configurations import (
 
 VRM = "https://vrmapi.victronenergy.com/v2"
 NOW = datetime.datetime.now(datetime.timezone.utc).timestamp()
+STATE_ENUM = [{"nameEnum": "Off", "valueEnum": 0}]
 
 
-def diag_record(code, description, value, device="Battery Monitor", ts=None):
+def diag_record(code, description, raw, value, device="Battery Monitor", ts=None, enum=None):
     return {
         "code": code,
         "description": description,
+        "rawValue": raw,
         "formattedValue": value,
+        "dataAttributeEnumValues": enum or [],
         "Device": device,
         "instance": 278,
         "timestamp": int(ts if ts is not None else NOW),
@@ -80,49 +83,91 @@ class TestBuildReadings:
 
     def test_filters_to_whitelist(self):
         diagnostics = [
-            diag_record("V", "Voltage", "53.26 V"),
-            diag_record("ip", "Local ip address", "192.168.9.24", device="Gateway"),
+            diag_record("V", "Voltage", 53.2612, "53.26 V"),
+            diag_record("ip", "Local ip address", "192.168.9.24", "192.168.9.24", device="Gateway"),
         ]
         readings, _ = build_readings(diagnostics, {"V"})
-        assert readings == {"Voltage": "53.26 V"}
+        assert readings == {"Voltage": 53.26}
 
     def test_prefers_battery_monitor_over_system_overview(self):
         diagnostics = [
-            diag_record("bv", "Voltage", "53.00 V", device="System overview"),
-            diag_record("V", "Voltage", "53.26 V", device="Battery Monitor"),
+            diag_record("bv", "Voltage", 53.0, "53.00 V", device="System overview"),
+            diag_record("V", "Voltage", 53.2612, "53.26 V", device="Battery Monitor"),
         ]
         readings, _ = build_readings(diagnostics, {"V", "bv"})
-        assert readings == {"Voltage": "53.26 V"}
+        assert readings == {"Voltage": 53.26}
 
     def test_drops_records_far_behind_newest(self):
         old_ts = NOW - 5 * 365 * 24 * 3600
         diagnostics = [
-            diag_record("V", "Voltage", "26.54 V"),
-            diag_record("PVP", "PV power", "294 W", device="Solar Charger", ts=old_ts),
+            diag_record("V", "Voltage", 26.54, "26.54 V"),
+            diag_record("PVP", "PV power", 294, "294 W", device="Solar Charger", ts=old_ts),
         ]
         readings, newest_ts = build_readings(diagnostics, {"V", "PVP"})
-        assert readings == {"Voltage": "26.54 V"}
+        assert readings == {"Voltage": 26.54}
         assert newest_ts == int(NOW)
 
     def test_skips_empty_values(self):
-        diagnostics = [diag_record("V", "Voltage", "")]
+        diagnostics = [diag_record("V", "Voltage", None, "")]
         readings, _ = build_readings(diagnostics, {"V"})
         assert readings == {}
 
+    def test_sends_measured_readings_as_numbers(self):
+        diagnostics = [
+            diag_record("V", "Voltage", 26.79, "26.79 V"),
+            diag_record("TTG", "Time to go", 78.017, "78.02 h"),
+        ]
+        readings, _ = build_readings(diagnostics, {"V", "TTG"})
+        assert readings == {"Voltage": 26.79, "Time to go": 78.02}
+
+    def test_keeps_status_readings_as_text(self):
+        diagnostics = [
+            diag_record("ScS", "Charge state", 0, "Off", device="Solar Charger", enum=STATE_ENUM),
+        ]
+        readings, _ = build_readings(diagnostics, {"ScS"})
+        assert readings == {"Charge state": "Off"}
+
+    def test_keeps_text_readings_as_text(self):
+        diagnostics = [diag_record("mi", "Model", "C00A", "C00A", device="Gateway")]
+        readings, _ = build_readings(diagnostics, {"mi"})
+        assert readings == {"Model": "C00A"}
+
+    def test_rounds_like_display_text(self):
+        diagnostics = [
+            diag_record("bp", "Battery Power", -50.578, "-51 W", device="System overview"),
+            diag_record("SOC", "State of charge", 94.44, "94.4 %"),
+        ]
+        readings, _ = build_readings(diagnostics, {"bp", "SOC"})
+        assert readings == {"Battery Power": -51, "State of charge": 94.4}
+
+    def test_keeps_number_when_display_text_is_blank(self):
+        diagnostics = [diag_record("PVP", "PV power", 0, "", device="Solar Charger")]
+        readings, _ = build_readings(diagnostics, {"PVP"})
+        assert readings == {"PV power": 0}
+
+    @pytest.mark.parametrize("raw", [None, float("nan"), float("inf")])
+    def test_skips_measured_reading_without_a_valid_number(self, raw):
+        diagnostics = [
+            diag_record("V", "Voltage", raw, "--"),
+            diag_record("I", "Current", -1.1, "-1.10 A"),
+        ]
+        readings, _ = build_readings(diagnostics, {"V", "I"})
+        assert readings == {"Current": -1.1}
+
     def test_suppresses_system_overview_fallback_when_battery_monitor_present(self):
         diagnostics = [
-            diag_record("SOC", "State of charge", "95.0 %"),
-            diag_record("bs", "Battery SOC", "95.0 %", device="System overview"),
+            diag_record("SOC", "State of charge", 95, "95.0 %"),
+            diag_record("bs", "Battery SOC", 95, "95.0 %", device="System overview"),
         ]
         readings, _ = build_readings(diagnostics, {"SOC", "bs"})
-        assert readings == {"State of charge": "95.0 %"}
+        assert readings == {"State of charge": 95}
 
     def test_keeps_fallback_when_battery_monitor_absent(self):
         diagnostics = [
-            diag_record("bs", "Battery SOC", "95.0 %", device="System overview"),
+            diag_record("bs", "Battery SOC", 95, "95.0 %", device="System overview"),
         ]
         readings, _ = build_readings(diagnostics, {"SOC", "bs"})
-        assert readings == {"Battery SOC": "95.0 %"}
+        assert readings == {"Battery SOC": 95}
 
 
 @pytest.mark.asyncio
@@ -162,9 +207,9 @@ async def test_pull_observations_happy_path(
     ])
     respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
-            diag_record("V", "Voltage", "53.26 V"),
-            diag_record("SOC", "State of charge", "95.0 %"),
-            diag_record("us", "Update status", "Idle", device="Gateway"),
+            diag_record("V", "Voltage", 53.2612, "53.26 V"),
+            diag_record("SOC", "State of charge", 95, "95.0 %"),
+            diag_record("us", "Update status", 0, "Idle", device="Gateway", enum=STATE_ENUM),
         ]})
     )
 
@@ -179,7 +224,7 @@ async def test_pull_observations_happy_path(
     assert obs["type"] == "stationary-object"
     assert obs["subject_type"] == "static-sensor"
     assert obs["location"] == {"lat": -12.345678, "lon": 34.567890}
-    assert obs["additional"] == {"Voltage": "53.26 V", "State of charge": "95.0 %"}
+    assert obs["additional"] == {"Voltage": 53.26, "State of charge": 95}
 
 
 @pytest.mark.asyncio
@@ -211,7 +256,7 @@ async def test_pull_observations_auto_discovers_without_config(
     ])
     respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
-            diag_record("V", "Voltage", "53.26 V"),
+            diag_record("V", "Voltage", 53.2612, "53.26 V"),
         ]})
     )
 
@@ -236,7 +281,7 @@ async def test_pull_observations_excludes_installations(
     ])
     respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
-            diag_record("V", "Voltage", "53.26 V"),
+            diag_record("V", "Voltage", 53.2612, "53.26 V"),
         ]})
     )
 
@@ -302,7 +347,7 @@ async def test_pull_observations_continues_after_site_failure(
     )
     respx.get(f"{VRM}/installations/100002/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
-            diag_record("V", "Voltage", "26.56 V"),
+            diag_record("V", "Voltage", 26.56, "26.56 V"),
         ]})
     )
 
@@ -390,8 +435,8 @@ async def test_pull_observations_additional_sensor_codes(
     ])
     respx.get(f"{VRM}/installations/100001/diagnostics").mock(
         return_value=Response(200, json={"success": True, "records": [
-            diag_record("V", "Voltage", "53.26 V"),
-            diag_record("gs", "Genset state", "Stopped", device="Gateway"),
+            diag_record("V", "Voltage", 53.2612, "53.26 V"),
+            diag_record("gs", "Genset state", 0, "Stopped", device="Gateway", enum=STATE_ENUM),
         ]})
     )
 
