@@ -1,5 +1,6 @@
 import datetime
 import logging
+import math
 
 import httpx
 import stamina
@@ -48,7 +49,7 @@ def build_readings(diagnostics: list, sensor_codes: set) -> tuple:
     """
     candidates = [
         r for r in diagnostics
-        if r.get("code") in sensor_codes and r.get("formattedValue") not in ("", None)
+        if r.get("code") in sensor_codes and reading_value(r) is not None
     ]
     if not candidates:
         return {}, 0
@@ -75,14 +76,30 @@ def build_readings(diagnostics: list, sensor_codes: set) -> tuple:
 
 
 def reading_value(record: dict):
-    """Measured readings go out as numbers ("Voltage": 26.79). Status readings
-    (records with enum values, e.g. charge state) keep their text
-    ("Charge state": "Off").
+    """Value to send for a diagnostics record, or None to leave it out.
+
+    Measured readings go out as numbers, rounded like VRM's display text
+    ("Voltage": 26.79). Status and text readings (enum values or text
+    rawValue, e.g. charge state) keep their display text ("Charge state": "Off").
     """
     raw = record.get("rawValue")
-    if record.get("dataAttributeEnumValues") or type(raw) not in (int, float):
-        return record["formattedValue"]
-    return raw
+    formatted = record.get("formattedValue")
+    if record.get("dataAttributeEnumValues") or isinstance(raw, str):
+        return formatted if formatted not in ("", None) else None
+    if type(raw) not in (int, float) or not math.isfinite(raw):
+        return None
+    return round_like(raw, formatted)
+
+
+def round_like(raw, formatted):
+    """Round raw to the decimals VRM shows in formatted ("-51 W" -> -51)."""
+    number, _, _ = str(formatted or "").partition(" ")
+    try:
+        float(number)
+    except ValueError:
+        return raw
+    _, dot, decimals = number.partition(".")
+    return round(raw, len(decimals)) if dot else round(raw)
 
 
 def build_observation(site, override, readings: dict, newest_ts: int, subject_subtype: str) -> dict:
